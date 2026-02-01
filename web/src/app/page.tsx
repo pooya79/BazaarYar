@@ -201,10 +201,10 @@ export default function Home() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--marketing-bg)] font-sans text-[var(--marketing-text-primary)]">
+    <div className="flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
       <div
         className={cn(
-          "fixed inset-0 z-[99] bg-[var(--marketing-overlay)] backdrop-blur-[4px] md:hidden",
+          "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
           sidebarOpen ? "block" : "hidden"
         )}
         onClick={() => setSidebarOpen(false)}
@@ -226,7 +226,7 @@ export default function Home() {
         onToolSelect={handleToolClick}
       />
 
-      <main className="relative flex flex-1 flex-col overflow-hidden bg-[var(--marketing-bg)]">
+      <main className="relative flex flex-1 flex-col overflow-hidden bg-marketing-bg">
         <MarketingHeader
           pageTitle={pageTitle}
           PageIcon={PageIcon}

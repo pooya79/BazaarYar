@@ -6,7 +6,7 @@ import type { KeyboardEvent, RefObject } from "react";
 
 const iconClass = "size-[18px]";
 const gradientClass =
-  "bg-gradient-to-br from-[var(--marketing-gradient-from)] to-[var(--marketing-gradient-to)]";
+  "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
 type MarketingInputProps = {
   textareaRef: RefObject<HTMLTextAreaElement>;
@@ -28,18 +28,18 @@ export function MarketingInput({
   onToggleBrandVoice,
 }: MarketingInputProps) {
   return (
-    <div className="border-t border-[var(--marketing-border)] bg-[var(--marketing-surface-translucent)] p-4 backdrop-blur-[12px] md:px-8 md:py-6">
+    <div className="border-t border-marketing-border bg-marketing-surface-translucent p-4 backdrop-blur-[12px] md:px-8 md:py-6">
       <div className="mx-auto max-w-[900px]">
         <div
           className={cn(
-            "flex items-end gap-3 rounded-2xl border-2 border-[var(--marketing-border)] bg-[var(--marketing-surface)] py-2 pr-2 pl-5 transition-all duration-300",
-            "shadow-[var(--marketing-shadow-soft)]",
-            "focus-within:border-[var(--marketing-secondary)] focus-within:ring-4 focus-within:ring-[var(--marketing-accent-glow)]"
+            "flex items-end gap-3 rounded-2xl border-2 border-marketing-border bg-marketing-surface py-2 pr-2 pl-5 transition-all duration-300",
+            "shadow-marketing-soft",
+            "focus-within:border-marketing-secondary focus-within:ring-4 focus-within:ring-marketing-accent-glow"
           )}
         >
           <Textarea
             ref={textareaRef}
-            className="min-h-0 max-h-[150px] flex-1 resize-none border-0 bg-transparent px-0 py-3 text-base text-[var(--marketing-text-primary)] placeholder:text-[var(--marketing-text-muted)] shadow-none focus-visible:ring-0"
+            className="min-h-0 max-h-[150px] flex-1 resize-none border-0 bg-transparent px-0 py-3 text-base text-marketing-text-primary placeholder:text-marketing-text-muted shadow-none focus-visible:ring-0"
             placeholder="Ask me to write ad copy, optimize SEO, or plan a campaign..."
             rows={1}
             value={value}
@@ -50,7 +50,7 @@ export function MarketingInput({
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-lg text-[var(--marketing-text-muted)] hover:bg-[var(--marketing-accent-medium)] hover:text-[var(--marketing-primary)]"
+              className="h-10 w-10 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
               type="button"
               title="Attach"
             >
@@ -59,7 +59,7 @@ export function MarketingInput({
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-lg text-[var(--marketing-text-muted)] hover:bg-[var(--marketing-accent-medium)] hover:text-[var(--marketing-primary)]"
+              className="h-10 w-10 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
               type="button"
               title="Voice"
             >
@@ -69,10 +69,10 @@ export function MarketingInput({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-10 w-10 rounded-xl text-[var(--marketing-on-primary)] transition-all duration-200 hover:text-[var(--marketing-on-primary)]",
+                "h-10 w-10 rounded-xl text-marketing-on-primary transition-all duration-200 hover:text-marketing-on-primary",
                 gradientClass,
-                "shadow-[var(--marketing-shadow-soft)]",
-                "hover:scale-105 hover:-rotate-6 hover:shadow-[var(--marketing-shadow-hover)]"
+                "shadow-marketing-soft",
+                "hover:scale-105 hover:-rotate-6 hover:shadow-marketing-hover"
               )}
               type="button"
               onClick={onSend}
@@ -81,16 +81,16 @@ export function MarketingInput({
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex flex-col items-start gap-3 px-2 text-xs text-[var(--marketing-text-muted)] md:flex-row md:items-center md:justify-between">
+        <div className="mt-3 flex flex-col items-start gap-3 px-2 text-xs text-marketing-text-muted md:flex-row md:items-center md:justify-between">
           <span>Marketing AI can make mistakes. Verify important data.</span>
           <Button
             type="button"
             variant="ghost"
-            className="h-auto rounded-full border-0 bg-[var(--marketing-accent-medium)] px-2.5 py-1 text-xs font-semibold text-[var(--marketing-primary)] hover:bg-[var(--marketing-accent-strong)] hover:text-[var(--marketing-primary)]"
+            className="h-auto rounded-full border-0 bg-marketing-accent-medium px-2.5 py-1 text-xs font-semibold text-marketing-primary hover:bg-marketing-accent-strong hover:text-marketing-primary"
             onClick={onToggleBrandVoice}
           >
             <span
-              className="h-2 w-2 rounded-full bg-[var(--marketing-primary)]"
+              className="h-2 w-2 rounded-full bg-marketing-primary"
               aria-hidden="true"
             />
             <span>{brandVoice}</span>

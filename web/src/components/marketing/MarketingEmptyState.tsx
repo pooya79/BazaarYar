@@ -17,13 +17,13 @@ export function MarketingEmptyState({
 }: MarketingEmptyStateProps) {
   return (
     <div className="mx-auto max-w-[800px] pt-[60px] text-center">
-      <div className="mb-6 inline-flex h-14 w-14 items-center justify-center text-[var(--marketing-primary)] motion-safe:animate-bounce">
+      <div className="mb-6 inline-flex h-14 w-14 items-center justify-center text-marketing-primary motion-safe:animate-bounce">
         <Target className={iconXlClass} aria-hidden="true" />
       </div>
-      <h1 className="mb-3 text-[2rem] font-bold text-[var(--marketing-text-primary)]">
+      <h1 className="mb-3 text-[2rem] font-bold text-marketing-text-primary">
         Ready to boost your marketing?
       </h1>
-      <p className="mb-10 text-[1.1rem] leading-relaxed text-[var(--marketing-text-secondary)]">
+      <p className="mb-10 text-[1.1rem] leading-relaxed text-marketing-text-secondary">
         I'm your digital marketing assistant. I can help with content creation,
         SEO optimization, campaign strategy, and more.
       </p>
@@ -37,8 +37,8 @@ export function MarketingEmptyState({
               type="button"
               variant="ghost"
               className={cn(
-                "h-auto w-full flex-col items-start gap-2 rounded-xl border border-[var(--marketing-border)] bg-[var(--marketing-surface)] p-5 text-left text-[var(--marketing-text-primary)] transition-all duration-300",
-                "hover:-translate-y-1 hover:border-[var(--marketing-secondary)] hover:bg-[var(--marketing-surface)] hover:text-[var(--marketing-text-primary)] hover:shadow-[var(--marketing-shadow-hover)]"
+                "h-auto w-full flex-col items-start gap-2 rounded-xl border border-marketing-border bg-marketing-surface p-5 text-left text-marketing-text-primary transition-all duration-300",
+                "hover:-translate-y-1 hover:border-marketing-secondary hover:bg-marketing-surface hover:text-marketing-text-primary hover:shadow-marketing-hover"
               )}
               onClick={() => onAction(action.prompt)}
             >
@@ -48,7 +48,7 @@ export function MarketingEmptyState({
               <div className="text-[0.95rem] font-semibold">
                 {action.title}
               </div>
-              <div className="text-[0.85rem] leading-snug text-[var(--marketing-text-muted)]">
+              <div className="text-[0.85rem] leading-snug text-marketing-text-muted">
                 {action.description}
               </div>
             </Button>
