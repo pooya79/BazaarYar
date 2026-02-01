@@ -9,12 +9,13 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import type { ChatAction, ChatItem, ChatStatus, NavItem } from "./types";
+import type { ChatAction, ChatItem, NavItem } from "./types";
 import {
   ChevronDown,
   MessageSquare,
   MoreHorizontal,
   PencilLine,
+  Plus,
   Rocket,
   Settings,
   Star,
@@ -26,6 +27,7 @@ const iconSmallClass = "size-[14px]";
 const gradientClass =
   "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 const menuItemClass = "cursor-pointer rounded-lg px-2.5 py-2";
+type ChatStatus = ChatItem["status"];
 
 const statusClasses: Record<ChatStatus, string> = {
   active: "bg-marketing-status-active",
@@ -36,6 +38,7 @@ type MarketingSidebarProps = {
   isOpen: boolean;
   chatsOpen: boolean;
   onToggleChats: () => void;
+  onNewChat: () => void;
   chatItems: ChatItem[];
   activeChatId: string | null;
   onChatSelect: (chatId: string) => void;
@@ -52,6 +55,7 @@ export function MarketingSidebar({
   isOpen,
   chatsOpen,
   onToggleChats,
+  onNewChat,
   chatItems,
   activeChatId,
   onChatSelect,
@@ -63,6 +67,17 @@ export function MarketingSidebar({
   activeTool,
   onToolSelect,
 }: MarketingSidebarProps) {
+  const chatPanelId = "marketing-chats-panel";
+  const chatsState = chatsOpen ? "open" : "closed";
+  const hasChats = chatItems.length > 0;
+
+  const handleToggleChats = () => {
+    onToggleChats();
+    if (chatMenuOpenId) {
+      onChatMenuOpenChange(null);
+    }
+  };
+
   return (
     <aside
       className={cn(
@@ -92,159 +107,201 @@ export function MarketingSidebar({
           <div>
             <Button
               type="button"
+              className={cn(
+                "mb-4 w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold text-marketing-on-primary shadow-marketing-soft transition-all",
+                gradientClass,
+                "hover:-translate-y-0.5 hover:shadow-marketing-hover",
+              )}
+              onClick={onNewChat}
+            >
+              <Plus className={iconClass} aria-hidden="true" />
+              New chat
+            </Button>
+            <Button
+              type="button"
               variant="ghost"
               className="w-full flex-1 justify-between px-2 py-0 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary hover:bg-transparent hover:text-marketing-text-secondary"
-              onClick={onToggleChats}
+              onClick={handleToggleChats}
               aria-expanded={chatsOpen}
+              aria-controls={chatPanelId}
             >
               <span>Chats</span>
               <ChevronDown
                 className={cn(
                   iconClass,
-                  "transition-transform duration-200",
+                  "transition-transform duration-300",
                   chatsOpen && "rotate-180",
                 )}
                 aria-hidden="true"
               />
             </Button>
-            {chatsOpen && (
-              <div className="mt-3 flex flex-col gap-2">
-                {chatItems.map((chat) => {
-                  const isActive = activeChatId === chat.id;
-                  return (
-                    <div
-                      key={chat.id}
-                      className={cn(
-                        "relative flex items-start gap-2 rounded-[10px] border border-marketing-border bg-marketing-surface py-2.5 pr-2 pl-3 transition-all duration-200",
-                        !isActive &&
-                          "hover:border-marketing-secondary hover:shadow-marketing-soft",
-                        isActive &&
-                          "border-marketing-primary ring-1 ring-marketing-accent-ring",
-                      )}
-                    >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-auto flex-1 items-start justify-start px-0 py-0 text-left text-marketing-text-primary hover:bg-transparent hover:text-marketing-text-primary"
-                        onClick={() => onChatSelect(chat.id)}
-                      >
-                        <div className="flex w-full flex-col gap-1">
-                          <div className="flex items-center gap-2 text-[0.9rem] font-semibold">
-                            <span className="truncate">{chat.title}</span>
-                            {chat.starred && (
-                              <Star
-                                className={cn(
-                                  iconSmallClass,
-                                  "fill-current text-marketing-secondary",
-                                )}
-                                aria-hidden="true"
-                              />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-marketing-text-muted">
-                            <span
-                              className={cn(
-                                "inline-block h-1.5 w-1.5 rounded-full",
-                                statusClasses[chat.status],
-                              )}
-                            />
-                            <span>{chat.meta}</span>
-                          </div>
-                        </div>
-                      </Button>
-                      <DropdownMenu
-                        open={chatMenuOpenId === chat.id}
-                        onOpenChange={(open) =>
-                          onChatMenuOpenChange(open ? chat.id : null)
-                        }
-                      >
-                        <DropdownMenuTrigger asChild>
+            <div
+              id={chatPanelId}
+              data-state={chatsState}
+              aria-hidden={!chatsOpen}
+              className={cn(
+                "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                chatsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+              )}
+            >
+              <div className="overflow-hidden">
+                <div
+                  className={cn(
+                    "mt-3 flex flex-col gap-2 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                    chatsOpen
+                      ? "opacity-100 translate-y-0"
+                      : "pointer-events-none opacity-0 -translate-y-2",
+                  )}
+                >
+                  {!hasChats ? (
+                    <div className="rounded-[10px] border border-dashed border-marketing-border bg-marketing-surface px-3 py-4 text-xs text-marketing-text-muted">
+                      No chats yet. Start a conversation to see it here.
+                    </div>
+                  ) : (
+                    chatItems.map((chat) => {
+                      const isActive = activeChatId === chat.id;
+                      const statusClass =
+                        statusClasses[chat.status] ?? "bg-marketing-border";
+
+                      return (
+                        <div
+                          key={chat.id}
+                          className={cn(
+                            "relative flex items-start gap-2 rounded-[10px] border border-marketing-border bg-marketing-surface py-2.5 pr-2 pl-3 transition-all duration-200",
+                            !isActive &&
+                              "hover:border-marketing-secondary hover:shadow-marketing-soft",
+                            isActive &&
+                              "border-marketing-primary ring-1 ring-marketing-accent-ring",
+                          )}
+                        >
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
-                            aria-label="Chat options"
+                            className="h-auto min-w-0 flex-1 items-start justify-start px-0 py-0 text-left text-marketing-text-primary hover:bg-transparent hover:text-marketing-text-primary"
+                            onClick={() => onChatSelect(chat.id)}
                           >
-                            <MoreHorizontal
-                              className={iconClass}
-                              aria-hidden="true"
-                            />
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <div className="flex min-w-0 items-center gap-2 text-[0.9rem] font-semibold">
+                                <span className="truncate">{chat.title}</span>
+                                {chat.starred && (
+                                  <Star
+                                    className={cn(
+                                      iconSmallClass,
+                                      "fill-current text-marketing-secondary",
+                                    )}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </div>
+                              <div className="flex min-w-0 items-center gap-2 text-xs text-marketing-text-muted">
+                                <span
+                                  className={cn(
+                                    "inline-block h-1.5 w-1.5 rounded-full",
+                                    statusClass,
+                                  )}
+                                />
+                                <span className="truncate">{chat.meta}</span>
+                              </div>
+                            </div>
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          sideOffset={8}
-                          className="z-[120] min-w-[140px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
-                        >
-                          <DropdownMenuItem
-                            className={cn(
-                              menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
-                            )}
-                            onSelect={() => onChatAction("use", chat.id)}
+                          <DropdownMenu
+                            open={chatMenuOpenId === chat.id}
+                            onOpenChange={(open) =>
+                              onChatMenuOpenChange(open ? chat.id : null)
+                            }
                           >
-                            <MessageSquare
-                              className={cn(
-                                iconClass,
-                                "text-marketing-text-primary",
-                              )}
-                              aria-hidden="true"
-                            />
-                            <span>Use</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className={cn(
-                              menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
-                            )}
-                            onSelect={() => onChatAction("rename", chat.id)}
-                          >
-                            <PencilLine
-                              className={cn(
-                                iconClass,
-                                "text-marketing-text-primary",
-                              )}
-                              aria-hidden="true"
-                            />
-                            <span>Rename</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className={cn(
-                              menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
-                            )}
-                            onSelect={() => onChatAction("star", chat.id)}
-                          >
-                            <Star
-                              className={cn(
-                                iconClass,
-                                "text-marketing-text-primary",
-                              )}
-                              aria-hidden="true"
-                            />
-                            <span>{chat.starred ? "Unstar" : "Star"}</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            className={cn(
-                              menuItemClass,
-                              "focus:bg-marketing-danger-soft focus:text-marketing-danger",
-                            )}
-                            onSelect={() => onChatAction("delete", chat.id)}
-                          >
-                            <Trash2
-                              className={cn(iconClass, "text-marketing-danger")}
-                              aria-hidden="true"
-                            />
-                            <span>Delete</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  );
-                })}
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
+                                aria-label="Chat options"
+                              >
+                                <MoreHorizontal
+                                  className={iconClass}
+                                  aria-hidden="true"
+                                />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              sideOffset={8}
+                              className="z-[120] min-w-[140px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
+                            >
+                              <DropdownMenuItem
+                                className={cn(
+                                  menuItemClass,
+                                  "focus:bg-marketing-accent-soft focus:text-marketing-primary",
+                                )}
+                                onSelect={() => onChatAction("use", chat.id)}
+                              >
+                                <MessageSquare
+                                  className={cn(
+                                    iconClass,
+                                    "text-marketing-text-primary",
+                                  )}
+                                  aria-hidden="true"
+                                />
+                                <span>Use</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className={cn(
+                                  menuItemClass,
+                                  "focus:bg-marketing-accent-soft focus:text-marketing-primary",
+                                )}
+                                onSelect={() => onChatAction("rename", chat.id)}
+                              >
+                                <PencilLine
+                                  className={cn(
+                                    iconClass,
+                                    "text-marketing-text-primary",
+                                  )}
+                                  aria-hidden="true"
+                                />
+                                <span>Rename</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className={cn(
+                                  menuItemClass,
+                                  "focus:bg-marketing-accent-soft focus:text-marketing-primary",
+                                )}
+                                onSelect={() => onChatAction("star", chat.id)}
+                              >
+                                <Star
+                                  className={cn(
+                                    iconClass,
+                                    "text-marketing-text-primary",
+                                  )}
+                                  aria-hidden="true"
+                                />
+                                <span>{chat.starred ? "Unstar" : "Star"}</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                className={cn(
+                                  menuItemClass,
+                                  "focus:bg-marketing-danger-soft focus:text-marketing-danger",
+                                )}
+                                onSelect={() => onChatAction("delete", chat.id)}
+                              >
+                                <Trash2
+                                  className={cn(
+                                    iconClass,
+                                    "text-marketing-danger",
+                                  )}
+                                  aria-hidden="true"
+                                />
+                                <span>Delete</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           <div>

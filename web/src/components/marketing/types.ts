@@ -1,21 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 
-export type Sender = "bot" | "user";
-
 export type Message = {
   id: number;
-  sender: Sender;
+  sender: "bot" | "user";
   text: string;
   time: string;
 };
-
-export type ChatStatus = "active" | "draft";
 
 export type ChatItem = {
   id: string;
   title: string;
   meta: string;
-  status: ChatStatus;
+  status: "active" | "draft";
   starred: boolean;
 };
 
