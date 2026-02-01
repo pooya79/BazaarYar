@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { MinusCircle, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -6,7 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MinusCircle, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type ReferenceTableStatus = "active" | "disabled";
 

@@ -1,8 +1,8 @@
+import { Mic, Paperclip, SendHorizontal } from "lucide-react";
+import type { KeyboardEvent, RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Mic, Paperclip, SendHorizontal } from "lucide-react";
-import type { KeyboardEvent, RefObject } from "react";
 
 const iconClass = "size-[18px]";
 const gradientClass =

@@ -1,3 +1,14 @@
+import {
+  ChevronDown,
+  MessageSquare,
+  MoreHorizontal,
+  PencilLine,
+  Plus,
+  Rocket,
+  Settings,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,17 +21,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { ChatAction, ChatItem, NavItem } from "./types";
-import {
-  ChevronDown,
-  MessageSquare,
-  MoreHorizontal,
-  PencilLine,
-  Plus,
-  Rocket,
-  Settings,
-  Star,
-  Trash2,
-} from "lucide-react";
 
 const iconClass = "size-[18px]";
 const iconSmallClass = "size-[14px]";

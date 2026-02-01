@@ -1,6 +1,6 @@
+import { Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Target } from "lucide-react";
 import type { QuickAction } from "./types";
 
 const iconLargeClass = "size-6";

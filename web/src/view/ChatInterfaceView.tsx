@@ -1,11 +1,10 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  brandVoices,
   botResponses,
+  brandVoices,
   initialChats,
   library,
   quickActions,
@@ -16,14 +15,19 @@ import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingInput } from "@/components/marketing/MarketingInput";
 import { MarketingMessages } from "@/components/marketing/MarketingMessages";
 import { MarketingSidebar } from "@/components/marketing/MarketingSidebar";
-import {
-  initialReferenceTables,
-  ReferenceTablesView,
-} from "@/view/ReferenceTablesView";
-import type { ChatAction, ChatItem, Message } from "@/components/marketing/types";
+import type {
+  ChatAction,
+  ChatItem,
+  Message,
+} from "@/components/marketing/types";
+import { cn } from "@/lib/utils";
 import type {
   ReferenceTable,
   ReferenceTableAction,
+} from "@/view/ReferenceTablesView";
+import {
+  initialReferenceTables,
+  ReferenceTablesView,
 } from "@/view/ReferenceTablesView";
 
 function formatTime(date: Date) {
@@ -62,8 +66,9 @@ export function ChatInterfaceView() {
 
   useEffect(() => {
     if (!chatWrapperRef.current) return;
+    if (messages.length === 0 && !isTyping) return;
     chatWrapperRef.current.scrollTop = chatWrapperRef.current.scrollHeight;
-  }, [messages, isTyping]);
+  }, [messages.length, isTyping]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -287,7 +292,9 @@ export function ChatInterfaceView() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
-      <div
+      <button
+        type="button"
+        aria-label="Close sidebar"
         className={cn(
           "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
           sidebarOpen ? "block" : "hidden",

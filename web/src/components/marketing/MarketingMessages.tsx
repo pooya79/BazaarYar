@@ -1,6 +1,6 @@
+import { Rocket, User } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Rocket, User } from "lucide-react";
 import type { Message } from "./types";
 
 const iconClass = "size-[18px]";
