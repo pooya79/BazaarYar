@@ -69,14 +69,14 @@ export function MarketingSidebar({
         "fixed left-0 top-0 z-[100] flex h-screen w-[300px] -translate-x-full flex-col border-r border-marketing-border bg-marketing-sidebar-bg p-6 shadow-marketing-drawer transition-[transform,width,padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:h-auto md:translate-x-0 md:shadow-none",
         isOpen && "translate-x-0",
         !isOpen &&
-          "md:-translate-x-full md:w-0 md:px-0 md:border-r-0 md:overflow-hidden md:shadow-marketing-drawer"
+          "md:-translate-x-full md:w-0 md:px-0 md:border-r-0 md:overflow-hidden md:shadow-marketing-drawer",
       )}
     >
       <div className="flex items-center gap-3 pb-6">
         <div
           className={cn(
             "flex h-10 w-10 items-center justify-center rounded-xl text-marketing-on-primary shadow-marketing-soft",
-            gradientClass
+            gradientClass,
           )}
         >
           <Rocket className={iconClass} aria-hidden="true" />
@@ -87,13 +87,13 @@ export function MarketingSidebar({
       </div>
       <Separator className="bg-marketing-border" />
 
-      <ScrollArea className="mt-6 min-h-0 flex-1 pr-2">
+      <ScrollArea className="mt-6 min-h-0 flex-1 pr-3">
         <div className="space-y-7 pb-6">
           <div>
             <Button
               type="button"
               variant="ghost"
-              className="w-full justify-between px-2 py-0 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary hover:bg-transparent hover:text-marketing-text-secondary"
+              className="w-full flex-1 justify-between px-2 py-0 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary hover:bg-transparent hover:text-marketing-text-secondary"
               onClick={onToggleChats}
               aria-expanded={chatsOpen}
             >
@@ -102,7 +102,7 @@ export function MarketingSidebar({
                 className={cn(
                   iconClass,
                   "transition-transform duration-200",
-                  chatsOpen && "rotate-180"
+                  chatsOpen && "rotate-180",
                 )}
                 aria-hidden="true"
               />
@@ -119,7 +119,7 @@ export function MarketingSidebar({
                         !isActive &&
                           "hover:border-marketing-secondary hover:shadow-marketing-soft",
                         isActive &&
-                          "border-marketing-primary ring-1 ring-marketing-accent-ring"
+                          "border-marketing-primary ring-1 ring-marketing-accent-ring",
                       )}
                     >
                       <Button
@@ -128,24 +128,24 @@ export function MarketingSidebar({
                         className="h-auto flex-1 items-start justify-start px-0 py-0 text-left text-marketing-text-primary hover:bg-transparent hover:text-marketing-text-primary"
                         onClick={() => onChatSelect(chat.id)}
                       >
-                        <div className="flex flex-col gap-1">
+                        <div className="flex w-full flex-col gap-1">
                           <div className="flex items-center gap-2 text-[0.9rem] font-semibold">
-                            <span>{chat.title}</span>
+                            <span className="truncate">{chat.title}</span>
                             {chat.starred && (
-                                <Star
-                                  className={cn(
-                                    iconSmallClass,
-                                    "fill-current text-marketing-secondary"
-                                  )}
-                                  aria-hidden="true"
-                                />
+                              <Star
+                                className={cn(
+                                  iconSmallClass,
+                                  "fill-current text-marketing-secondary",
+                                )}
+                                aria-hidden="true"
+                              />
                             )}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-marketing-text-muted">
                             <span
                               className={cn(
                                 "inline-block h-1.5 w-1.5 rounded-full",
-                                statusClasses[chat.status]
+                                statusClasses[chat.status],
                               )}
                             />
                             <span>{chat.meta}</span>
@@ -166,24 +166,27 @@ export function MarketingSidebar({
                             className="h-8 w-8 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
                             aria-label="Chat options"
                           >
-                            <MoreHorizontal className={iconClass} aria-hidden="true" />
+                            <MoreHorizontal
+                              className={iconClass}
+                              aria-hidden="true"
+                            />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           sideOffset={8}
-                          className="min-w-[140px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
+                          className="z-[120] min-w-[140px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
                         >
                           <DropdownMenuItem
                             className={cn(
                               menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary"
+                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
                             )}
                             onSelect={() => onChatAction("use", chat.id)}
                           >
                             <MessageSquare
                               className={cn(
                                 iconClass,
-                                "text-marketing-text-primary"
+                                "text-marketing-text-primary",
                               )}
                               aria-hidden="true"
                             />
@@ -192,14 +195,14 @@ export function MarketingSidebar({
                           <DropdownMenuItem
                             className={cn(
                               menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary"
+                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
                             )}
                             onSelect={() => onChatAction("rename", chat.id)}
                           >
                             <PencilLine
                               className={cn(
                                 iconClass,
-                                "text-marketing-text-primary"
+                                "text-marketing-text-primary",
                               )}
                               aria-hidden="true"
                             />
@@ -208,14 +211,14 @@ export function MarketingSidebar({
                           <DropdownMenuItem
                             className={cn(
                               menuItemClass,
-                              "focus:bg-marketing-accent-soft focus:text-marketing-primary"
+                              "focus:bg-marketing-accent-soft focus:text-marketing-primary",
                             )}
                             onSelect={() => onChatAction("star", chat.id)}
                           >
                             <Star
                               className={cn(
                                 iconClass,
-                                "text-marketing-text-primary"
+                                "text-marketing-text-primary",
                               )}
                               aria-hidden="true"
                             />
@@ -225,15 +228,12 @@ export function MarketingSidebar({
                             variant="destructive"
                             className={cn(
                               menuItemClass,
-                              "focus:bg-marketing-danger-soft focus:text-marketing-danger"
+                              "focus:bg-marketing-danger-soft focus:text-marketing-danger",
                             )}
                             onSelect={() => onChatAction("delete", chat.id)}
                           >
                             <Trash2
-                              className={cn(
-                                iconClass,
-                                "text-marketing-danger"
-                              )}
+                              className={cn(iconClass, "text-marketing-danger")}
                               aria-hidden="true"
                             />
                             <span>Delete</span>
@@ -265,7 +265,7 @@ export function MarketingSidebar({
                         !isActive &&
                           "hover:bg-marketing-accent-soft hover:text-marketing-primary",
                         isActive &&
-                          "bg-marketing-accent-strong font-semibold text-marketing-primary"
+                          "bg-marketing-accent-strong font-semibold text-marketing-primary",
                       )}
                       onClick={() => onToolSelect(tool.id)}
                     >
@@ -298,7 +298,7 @@ export function MarketingSidebar({
                         !isActive &&
                           "hover:bg-marketing-accent-soft hover:text-marketing-primary",
                         isActive &&
-                          "bg-marketing-accent-strong font-semibold text-marketing-primary"
+                          "bg-marketing-accent-strong font-semibold text-marketing-primary",
                       )}
                       onClick={() => onToolSelect(item.id)}
                     >
@@ -323,10 +323,7 @@ export function MarketingSidebar({
       >
         <Avatar className="size-9">
           <AvatarFallback
-            className={cn(
-              "text-marketing-on-primary",
-              gradientClass
-            )}
+            className={cn("text-marketing-on-primary", gradientClass)}
           >
             JD
           </AvatarFallback>

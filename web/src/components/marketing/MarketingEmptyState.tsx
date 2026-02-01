@@ -38,16 +38,14 @@ export function MarketingEmptyState({
               variant="ghost"
               className={cn(
                 "h-auto w-full flex-col items-start gap-2 rounded-xl border border-marketing-border bg-marketing-surface p-5 text-left text-marketing-text-primary transition-all duration-300",
-                "hover:-translate-y-1 hover:border-marketing-secondary hover:bg-marketing-surface hover:text-marketing-text-primary hover:shadow-marketing-hover"
+                "hover:-translate-y-1 hover:border-marketing-secondary hover:bg-marketing-surface hover:text-marketing-text-primary hover:shadow-marketing-hover",
               )}
               onClick={() => onAction(action.prompt)}
             >
               <div className="mb-1 inline-flex">
                 <Icon className={iconLargeClass} aria-hidden="true" />
               </div>
-              <div className="text-[0.95rem] font-semibold">
-                {action.title}
-              </div>
+              <div className="text-[0.95rem] font-semibold">{action.title}</div>
               <div className="text-[0.85rem] leading-snug text-marketing-text-muted">
                 {action.description}
               </div>

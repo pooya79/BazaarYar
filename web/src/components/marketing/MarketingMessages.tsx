@@ -17,7 +17,10 @@ type MarketingMessagesProps = {
   isTyping: boolean;
 };
 
-export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps) {
+export function MarketingMessages({
+  messages,
+  isTyping,
+}: MarketingMessagesProps) {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6">
       {messages.map((message) => (
@@ -25,7 +28,7 @@ export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps
           key={message.id}
           className={cn(
             "flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300",
-            message.sender === "user" && "flex-row-reverse"
+            message.sender === "user" && "flex-row-reverse",
           )}
         >
           <div
@@ -33,7 +36,7 @@ export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps
               "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-marketing-on-primary shadow-marketing-soft",
               message.sender === "bot"
                 ? gradientClass
-                : "bg-marketing-text-primary"
+                : "bg-marketing-text-primary",
             )}
           >
             {message.sender === "bot" ? (
@@ -49,7 +52,7 @@ export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps
                 bubbleBaseClass,
                 message.sender === "user"
                   ? "border-0 bg-marketing-text-primary text-marketing-on-primary rounded-br-[4px]"
-                  : "rounded-bl-[4px]"
+                  : "rounded-bl-[4px]",
               )}
             >
               <CardContent className={bubbleContentClass}>
@@ -68,7 +71,7 @@ export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps
           <div
             className={cn(
               "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-marketing-on-primary shadow-marketing-soft",
-              gradientClass
+              gradientClass,
             )}
           >
             <Rocket className={iconClass} aria-hidden="true" />
@@ -77,7 +80,7 @@ export function MarketingMessages({ messages, isTyping }: MarketingMessagesProps
             <Card
               className={cn(
                 "gap-0 py-0 rounded-2xl rounded-bl-[4px]",
-                bubbleBaseClass
+                bubbleBaseClass,
               )}
             >
               <CardContent className={bubbleContentClass}>

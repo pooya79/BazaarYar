@@ -16,12 +16,20 @@ import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingInput } from "@/components/marketing/MarketingInput";
 import { MarketingMessages } from "@/components/marketing/MarketingMessages";
 import { MarketingSidebar } from "@/components/marketing/MarketingSidebar";
+import {
+  initialReferenceTables,
+  ReferenceTablesView,
+} from "@/components/marketing/ReferenceTablesView";
 import type {
   ChatAction,
   ChatItem,
   Message,
   Sender,
 } from "@/components/marketing/types";
+import type {
+  ReferenceTable,
+  ReferenceTableAction,
+} from "@/components/marketing/ReferenceTablesView";
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -34,6 +42,10 @@ export default function Home() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatItems, setChatItems] = useState<ChatItem[]>(initialChats);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
+  const [referenceTables, setReferenceTables] = useState<ReferenceTable[]>(
+    initialReferenceTables,
+  );
+  const [tableMenuOpenId, setTableMenuOpenId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [messageInput, setMessageInput] = useState("");
@@ -42,6 +54,7 @@ export default function Home() {
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const referenceTableCounter = useRef(1);
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
     const allItems = [...tools, ...library];
@@ -112,11 +125,15 @@ export default function Home() {
     }
 
     setIsTyping(true);
-    typingTimeout.current = setTimeout(() => {
-      const response = botResponses[Math.floor(Math.random() * botResponses.length)];
-      setIsTyping(false);
-      addMessage(response, "bot");
-    }, 1400 + Math.random() * 900);
+    typingTimeout.current = setTimeout(
+      () => {
+        const response =
+          botResponses[Math.floor(Math.random() * botResponses.length)];
+        setIsTyping(false);
+        addMessage(response, "bot");
+      },
+      1400 + Math.random() * 900,
+    );
   };
 
   const handleToolClick = (toolId: string) => {
@@ -148,8 +165,8 @@ export default function Home() {
       if (!nextTitle || !nextTitle.trim()) return;
       setChatItems((prev) =>
         prev.map((item) =>
-          item.id === chatId ? { ...item, title: nextTitle.trim() } : item
-        )
+          item.id === chatId ? { ...item, title: nextTitle.trim() } : item,
+        ),
       );
       setChatMenuOpenId(null);
       return;
@@ -168,8 +185,8 @@ export default function Home() {
     if (action === "star") {
       setChatItems((prev) =>
         prev.map((item) =>
-          item.id === chatId ? { ...item, starred: !item.starred } : item
-        )
+          item.id === chatId ? { ...item, starred: !item.starred } : item,
+        ),
       );
       setChatMenuOpenId(null);
     }
@@ -177,6 +194,61 @@ export default function Home() {
 
   const handleQuickAction = (prompt: string) => {
     handleSend(prompt);
+  };
+
+  const handleAddReferenceTable = () => {
+    const nextIndex = referenceTableCounter.current++;
+    const nextTable: ReferenceTable = {
+      id: `reference-${Date.now()}-${nextIndex}`,
+      name: `Reference Table ${nextIndex}`,
+      description: "Define approved values agents should rely on.",
+      rows: 0,
+      columns: 4,
+      source: "Manual entry",
+      refresh: "On demand",
+      updatedAt: "Just now",
+      status: "active",
+      assignedAgents: [],
+      tags: ["draft"],
+    };
+    setReferenceTables((prev) => [nextTable, ...prev]);
+  };
+
+  const handleReferenceTableAction = (
+    action: ReferenceTableAction,
+    tableId: string,
+  ) => {
+    if (action === "toggle") {
+      setReferenceTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                status: table.status === "active" ? "disabled" : "active",
+              }
+            : table,
+        ),
+      );
+      setTableMenuOpenId(null);
+      return;
+    }
+
+    if (action === "remove") {
+      setReferenceTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId ? { ...table, assignedAgents: [] } : table,
+        ),
+      );
+      setTableMenuOpenId(null);
+      return;
+    }
+
+    if (action === "delete") {
+      setReferenceTables((prev) =>
+        prev.filter((table) => table.id !== tableId),
+      );
+      setTableMenuOpenId(null);
+    }
   };
 
   const handleInputChange = (value: string) => {
@@ -198,6 +270,7 @@ export default function Home() {
     setBrandVoiceIndex((prev) => (prev + 1) % brandVoices.length);
   };
 
+  const isReferenceTables = activeTool === "reference-tables";
   const hasMessages = messages.length > 0;
 
   return (
@@ -205,7 +278,7 @@ export default function Home() {
       <div
         className={cn(
           "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
-          sidebarOpen ? "block" : "hidden"
+          sidebarOpen ? "block" : "hidden",
         )}
         onClick={() => setSidebarOpen(false)}
       />
@@ -234,23 +307,41 @@ export default function Home() {
           onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
         />
 
-        <div className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8" ref={chatWrapperRef}>
-          {!hasMessages ? (
-            <MarketingEmptyState actions={quickActions} onAction={handleQuickAction} />
-          ) : (
-            <MarketingMessages messages={messages} isTyping={isTyping} />
-          )}
-        </div>
+        {isReferenceTables ? (
+          <ReferenceTablesView
+            tables={referenceTables}
+            tableMenuOpenId={tableMenuOpenId}
+            onTableMenuOpenChange={setTableMenuOpenId}
+            onAddTable={handleAddReferenceTable}
+            onTableAction={handleReferenceTableAction}
+          />
+        ) : (
+          <>
+            <div
+              className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8"
+              ref={chatWrapperRef}
+            >
+              {!hasMessages ? (
+                <MarketingEmptyState
+                  actions={quickActions}
+                  onAction={handleQuickAction}
+                />
+              ) : (
+                <MarketingMessages messages={messages} isTyping={isTyping} />
+              )}
+            </div>
 
-        <MarketingInput
-          textareaRef={textareaRef}
-          value={messageInput}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          onSend={handleSend}
-          brandVoice={brandVoices[brandVoiceIndex]}
-          onToggleBrandVoice={toggleBrandVoice}
-        />
+            <MarketingInput
+              textareaRef={textareaRef}
+              value={messageInput}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onSend={handleSend}
+              brandVoice={brandVoices[brandVoiceIndex]}
+              onToggleBrandVoice={toggleBrandVoice}
+            />
+          </>
+        )}
       </main>
     </div>
   );

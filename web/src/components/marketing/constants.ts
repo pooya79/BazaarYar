@@ -1,13 +1,12 @@
 import {
   BarChart3,
-  BookOpen,
   Calendar,
   Mail,
   MessageSquare,
-  Palette,
   PenLine,
   Search,
   Smartphone,
+  Table,
   Target,
 } from "lucide-react";
 
@@ -23,9 +22,7 @@ export const tools: NavItem[] = [
 ];
 
 export const library: NavItem[] = [
-  { id: "guidelines", label: "Brand Guidelines", icon: BookOpen },
-  { id: "assets", label: "Asset Library", icon: Palette },
-  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "reference-tables", label: "Reference Tables", icon: Table },
 ];
 
 export const initialChats: ChatItem[] = [

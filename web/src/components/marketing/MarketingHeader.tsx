@@ -56,7 +56,7 @@ export function MarketingHeader({
           size="icon"
           className={cn(
             iconButtonBase,
-            "shadow-none hover:shadow-marketing-soft"
+            "shadow-none hover:shadow-marketing-soft",
           )}
           type="button"
           title="History"
@@ -68,7 +68,7 @@ export function MarketingHeader({
           size="icon"
           className={cn(
             iconButtonBase,
-            "shadow-none hover:shadow-marketing-soft"
+            "shadow-none hover:shadow-marketing-soft",
           )}
           type="button"
           title="Share"
@@ -80,7 +80,7 @@ export function MarketingHeader({
           size="icon"
           className={cn(
             iconButtonBase,
-            "shadow-none hover:shadow-marketing-soft"
+            "shadow-none hover:shadow-marketing-soft",
           )}
           type="button"
           title="Settings"

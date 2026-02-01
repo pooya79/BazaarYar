@@ -9,7 +9,7 @@ const gradientClass =
   "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
 type MarketingInputProps = {
-  textareaRef: RefObject<HTMLTextAreaElement>;
+  textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -34,7 +34,7 @@ export function MarketingInput({
           className={cn(
             "flex items-end gap-3 rounded-2xl border-2 border-marketing-border bg-marketing-surface py-2 pr-2 pl-5 transition-all duration-300",
             "shadow-marketing-soft",
-            "focus-within:border-marketing-secondary focus-within:ring-4 focus-within:ring-marketing-accent-glow"
+            "focus-within:border-marketing-secondary focus-within:ring-4 focus-within:ring-marketing-accent-glow",
           )}
         >
           <Textarea
@@ -72,7 +72,7 @@ export function MarketingInput({
                 "h-10 w-10 rounded-xl text-marketing-on-primary transition-all duration-200 hover:text-marketing-on-primary",
                 gradientClass,
                 "shadow-marketing-soft",
-                "hover:scale-105 hover:-rotate-6 hover:shadow-marketing-hover"
+                "hover:scale-105 hover:-rotate-6 hover:shadow-marketing-hover",
               )}
               type="button"
               onClick={onSend}
