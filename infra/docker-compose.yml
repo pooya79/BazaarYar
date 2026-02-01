@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:18.1
+    container_name: bazaaryar-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: bazaaryar_dev
+      POSTGRES_USER: bazaaryar
+      POSTGRES_PASSWORD: bazaaryar
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bazaaryar -d bazaaryar_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: bazaaryar-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: dev@bazaaryar.com
+      PGADMIN_DEFAULT_PASSWORD: bazaaryar
+    depends_on:
+      db:
+        condition: service_healthy
+    configs:
+      - source: pgadmin-servers
+        target: /pgadmin4/servers.json
+        mode: 0444
+      - source: pgadmin-pgpass
+        target: /pgpass
+        mode: 0400
+        uid: "5050"
+        gid: "5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+volumes:
+  postgres_data:
+  pgadmin_data:
+configs:
+  pgadmin-servers:
+    file: ./pgadmin/servers.json
+  pgadmin-pgpass:
+    file: ./pgadmin/pgpass
