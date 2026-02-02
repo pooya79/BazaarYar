@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 
-app = FastAPI(title="BazaarYar API")
-
+app = FastAPI(title="BazaarYar API", docs_url="/api/docs")
 
 @app.get("/")
 def read_root() -> dict:
