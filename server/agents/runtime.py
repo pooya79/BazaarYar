@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain.tools import tool
-from langchain_openai import ChatOpenAI
 
-from server.core.config import get_settings
 from server.agents.usage import extract_usage
 
 SYSTEM_PROMPT = (
@@ -16,9 +14,6 @@ SYSTEM_PROMPT = (
     "When helpful, call tools to retrieve facts or compute results. "
     "Expose tool usage and provide a brief reasoning summary when the user requests it."
 )
-
-settings = get_settings()
-MODEL_NAME = settings.openai_model
 
 
 @tool(description="Add two numbers and return the sum.")
@@ -39,17 +34,7 @@ def utc_time() -> str:
 TOOLS = [add_numbers, reverse_text, utc_time]
 
 
-def build_agent():
-    model = ChatOpenAI(
-        model=MODEL_NAME,
-        api_key=settings.openai_api_key,
-        temperature=1.0,
-        reasoning={
-            "effort": "medium",
-            "exclude": False,
-            "enables": True,
-        }
-    )
+def build_agent_runtime(model: Any):
     return create_agent(
         model=model,
         tools=TOOLS,
@@ -57,17 +42,7 @@ def build_agent():
     )
 
 
-_agent_instance = None
-
-
-def get_agent():
-    global _agent_instance
-    if _agent_instance is None:
-        _agent_instance = build_agent()
-    return _agent_instance
-
-
-def split_ai_content(message: AIMessage) -> tuple[list[str], list[str]]:
+def split_openai_like_content(message: AIMessage) -> tuple[list[str], list[str]]:
     reasoning: list[str] = []
     text: list[str] = []
 
@@ -108,6 +83,7 @@ def split_ai_content(message: AIMessage) -> tuple[list[str], list[str]]:
         if isinstance(response_meta, dict) and response_meta.get("reasoning_content"):
             reasoning.append(str(response_meta["reasoning_content"]))
 
+    # Some SDKs expose the reasoning payload directly on the message.
     direct_reasoning = getattr(message, "reasoning_content", None)
     if direct_reasoning:
         direct_value = str(direct_reasoning)
@@ -117,7 +93,39 @@ def split_ai_content(message: AIMessage) -> tuple[list[str], list[str]]:
     return reasoning, text
 
 
-def extract_trace(messages: Iterable[BaseMessage]) -> dict[str, Any]:
+def split_gemini_content(message: AIMessage) -> tuple[list[str], list[str]]:
+    reasoning: list[str] = []
+    text: list[str] = []
+
+    content = getattr(message, "content_blocks", None) or message.content
+    if isinstance(content, list):
+        # Gemini 3 returns mixed content blocks, so extract thinking vs text explicitly.
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type == "thinking" and block.get("thinking"):
+                reasoning.append(str(block["thinking"]))
+            elif block_type == "text" and block.get("text"):
+                text.append(str(block["text"]))
+    elif isinstance(content, str):
+        text.append(content)
+
+    if not reasoning:
+        # Gemini may also expose reasoning hints via extra kwargs.
+        extra = getattr(message, "additional_kwargs", None) or {}
+        if extra.get("thinking"):
+            reasoning.append(str(extra["thinking"]))
+
+    return reasoning, text
+
+
+def extract_trace(
+    messages: Iterable[BaseMessage],
+    *,
+    model_name: str,
+    split_fn: Callable[[AIMessage], tuple[list[str], list[str]]],
+) -> dict[str, Any]:
     message_list = list(messages)
     tool_calls: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = []
@@ -135,7 +143,7 @@ def extract_trace(messages: Iterable[BaseMessage]) -> dict[str, Any]:
                             "type": call.get("type"),
                         }
                     )
-            thought_blocks, _ = split_ai_content(message)
+            thought_blocks, _ = split_fn(message)
             reasoning.extend(thought_blocks)
         elif isinstance(message, ToolMessage):
             tool_results.append(
@@ -157,7 +165,7 @@ def extract_trace(messages: Iterable[BaseMessage]) -> dict[str, Any]:
     if final_ai is not None:
         usage = extract_usage(final_ai)
         response_meta = getattr(final_ai, "response_metadata", None)
-        _, final_text_parts = split_ai_content(final_ai)
+        _, final_text_parts = split_fn(final_ai)
         final_text = "".join(final_text_parts).strip()
 
     return {
@@ -167,5 +175,5 @@ def extract_trace(messages: Iterable[BaseMessage]) -> dict[str, Any]:
         "tool_results": tool_results,
         "usage": usage,
         "response_metadata": response_meta,
-        "model": MODEL_NAME,
+        "model": model_name,
     }
