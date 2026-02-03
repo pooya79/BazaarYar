@@ -8,17 +8,17 @@ import {
   library,
   quickActions,
   tools,
-} from "@/components/marketing/constants";
-import { MarketingEmptyState } from "@/components/marketing/MarketingEmptyState";
-import { MarketingHeader } from "@/components/marketing/MarketingHeader";
-import { MarketingInput } from "@/components/marketing/MarketingInput";
-import { MarketingMessages } from "@/components/marketing/MarketingMessages";
-import { MarketingSidebar } from "@/components/marketing/MarketingSidebar";
+} from "@/components/chat-interface/constants";
+import { ChatEmptyState } from "@/components/chat-interface/ChatEmptyState";
+import { ChatHeader } from "@/components/chat-interface/ChatHeader";
+import { ChatInput } from "@/components/chat-interface/ChatInput";
+import { ChatMessages } from "@/components/chat-interface/ChatMessages";
+import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
 import type {
   ChatAction,
   ChatItem,
   Message,
-} from "@/components/marketing/types";
+} from "@/components/chat-interface/types";
 import { streamAgent } from "@/lib/api/clients/agent.client";
 import { cn } from "@/lib/utils";
 import type {
@@ -538,7 +538,7 @@ export function ChatInterfaceView() {
         onClick={() => setSidebarOpen(false)}
       />
 
-      <MarketingSidebar
+      <ChatSidebar
         isOpen={sidebarOpen}
         chatsOpen={chatsOpen}
         onToggleChats={() => setChatsOpen((prev) => !prev)}
@@ -556,7 +556,7 @@ export function ChatInterfaceView() {
       />
 
       <main className="relative flex flex-1 flex-col overflow-hidden bg-marketing-bg">
-        <MarketingHeader
+        <ChatHeader
           pageTitle={pageTitle}
           PageIcon={PageIcon}
           sidebarOpen={sidebarOpen}
@@ -578,16 +578,16 @@ export function ChatInterfaceView() {
               ref={chatWrapperRef}
             >
               {!hasMessages ? (
-                <MarketingEmptyState
+                <ChatEmptyState
                   actions={quickActions}
                   onAction={handleQuickAction}
                 />
               ) : (
-                <MarketingMessages messages={messages} isTyping={isTyping} />
+                <ChatMessages messages={messages} isTyping={isTyping} />
               )}
             </div>
 
-            <MarketingInput
+            <ChatInput
               textareaRef={textareaRef}
               value={messageInput}
               onChange={handleInputChange}

@@ -6,26 +6,26 @@ import type { QuickAction } from "./types";
 const iconLargeClass = "size-6";
 const iconXlClass = "size-14";
 
-type MarketingEmptyStateProps = {
+type ChatEmptyStateProps = {
   actions: QuickAction[];
   onAction: (prompt: string) => void;
 };
 
-export function MarketingEmptyState({
+export function ChatEmptyState({
   actions,
   onAction,
-}: MarketingEmptyStateProps) {
+}: ChatEmptyStateProps) {
   return (
     <div className="mx-auto max-w-[800px] pt-[60px] text-center">
       <div className="mb-6 inline-flex h-14 w-14 items-center justify-center text-marketing-primary motion-safe:animate-bounce">
         <Target className={iconXlClass} aria-hidden="true" />
       </div>
       <h1 className="mb-3 text-[2rem] font-bold text-marketing-text-primary">
-        Ready to boost your marketing?
+        Ready to get started?
       </h1>
       <p className="mb-10 text-[1.1rem] leading-relaxed text-marketing-text-secondary">
-        I'm your digital marketing assistant. I can help with content creation,
-        SEO optimization, campaign strategy, and more.
+        I'm your digital assistant. I can help with content creation, SEO
+        optimization, campaign strategy, and more.
       </p>
 
       <div className="mx-auto grid max-w-[800px] grid-cols-1 gap-4 md:grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">

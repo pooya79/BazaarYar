@@ -20,7 +20,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import type { ChatAction, ChatItem, NavItem } from "./types";
+import type { ChatAction, ChatItem, NavItem } from "@/components/chat-interface/types";
 
 const iconClass = "size-[18px]";
 const iconSmallClass = "size-[14px]";
@@ -34,7 +34,7 @@ const statusClasses: Record<ChatStatus, string> = {
   draft: "bg-marketing-status-draft",
 };
 
-type MarketingSidebarProps = {
+type ChatSidebarProps = {
   isOpen: boolean;
   chatsOpen: boolean;
   onToggleChats: () => void;
@@ -51,7 +51,7 @@ type MarketingSidebarProps = {
   onToolSelect: (toolId: string) => void;
 };
 
-export function MarketingSidebar({
+export function ChatSidebar({
   isOpen,
   chatsOpen,
   onToggleChats,
@@ -66,8 +66,8 @@ export function MarketingSidebar({
   library,
   activeTool,
   onToolSelect,
-}: MarketingSidebarProps) {
-  const chatPanelId = "marketing-chats-panel";
+}: ChatSidebarProps) {
+  const chatPanelId = "chat-chats-panel";
   const chatsState = chatsOpen ? "open" : "closed";
   const hasChats = chatItems.length > 0;
 
@@ -97,7 +97,7 @@ export function MarketingSidebar({
           <Rocket className={iconClass} aria-hidden="true" />
         </div>
         <div className="text-xl font-bold tracking-[-0.5px] text-marketing-text-primary">
-          Marketing AI
+          AI Assistant
         </div>
       </div>
       <Separator className="bg-marketing-border" />
@@ -388,7 +388,7 @@ export function MarketingSidebar({
         <div className="flex-1">
           <div className="text-[0.9rem] font-semibold">John Doe</div>
           <div className="text-xs text-marketing-text-muted">
-            Marketing Manager
+            Workspace Manager
           </div>
         </div>
         <Settings className={iconClass} aria-hidden="true" />

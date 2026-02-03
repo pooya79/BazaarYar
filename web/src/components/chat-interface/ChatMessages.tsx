@@ -12,15 +12,15 @@ const bubbleBaseClass =
 
 const bubbleContentClass = "px-5 py-4 leading-relaxed whitespace-pre-line";
 
-type MarketingMessagesProps = {
+type ChatMessagesProps = {
   messages: Message[];
   isTyping: boolean;
 };
 
-export function MarketingMessages({
+export function ChatMessages({
   messages,
   isTyping,
-}: MarketingMessagesProps) {
+}: ChatMessagesProps) {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6">
       {messages.map((message) => (

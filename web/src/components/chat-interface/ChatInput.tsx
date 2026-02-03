@@ -8,7 +8,7 @@ const iconClass = "size-[18px]";
 const gradientClass =
   "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
-type MarketingInputProps = {
+type ChatInputProps = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
@@ -18,7 +18,7 @@ type MarketingInputProps = {
   onToggleBrandVoice: () => void;
 };
 
-export function MarketingInput({
+export function ChatInput({
   textareaRef,
   value,
   onChange,
@@ -26,7 +26,7 @@ export function MarketingInput({
   onSend,
   brandVoice,
   onToggleBrandVoice,
-}: MarketingInputProps) {
+}: ChatInputProps) {
   return (
     <div className="border-t border-marketing-border bg-marketing-surface-translucent p-4 backdrop-blur-[12px] md:px-8 md:py-6">
       <div className="mx-auto max-w-[900px]">
@@ -82,7 +82,7 @@ export function MarketingInput({
           </div>
         </div>
         <div className="mt-3 flex flex-col items-start gap-3 px-2 text-xs text-marketing-text-muted md:flex-row md:items-center md:justify-between">
-          <span>Marketing AI can make mistakes. Verify important data.</span>
+          <span>AI can make mistakes. Verify important data.</span>
           <Button
             type="button"
             variant="ghost"

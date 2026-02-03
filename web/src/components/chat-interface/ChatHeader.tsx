@@ -8,19 +8,19 @@ const iconMenuClass = "size-[22px]";
 const iconButtonBase =
   "rounded-[10px] text-marketing-text-secondary border-marketing-border bg-marketing-surface hover:bg-marketing-surface hover:-translate-y-0.5 hover:border-marketing-primary hover:text-marketing-primary";
 
-type MarketingHeaderProps = {
+type ChatHeaderProps = {
   pageTitle: string;
   PageIcon: LucideIcon;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 };
 
-export function MarketingHeader({
+export function ChatHeader({
   pageTitle,
   PageIcon,
   sidebarOpen,
   onToggleSidebar,
-}: MarketingHeaderProps) {
+}: ChatHeaderProps) {
   return (
     <header className="sticky top-0 z-50 grid h-[70px] grid-cols-[auto_1fr_auto] items-center border-b border-marketing-border bg-marketing-surface-translucent px-4 backdrop-blur-[12px] md:px-8">
       <div className="flex items-center gap-4">

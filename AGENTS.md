@@ -15,7 +15,7 @@
 ### Key Directories
 - `web/`: Frontend app.
 - `web/src/app/`: Next.js App Router routes/layout.
-- `web/src/components/`: UI primitives (`ui/`) and marketing UI (`marketing/`).
+- `web/src/components/`: UI primitives (`ui/`) and feature UI (`chat-interface/`, `sidebar/`, `reference-tables/`).
 - `web/src/view/`: Page-level view components.
 - `web/src/lib/`: Shared helpers/utilities.
 - `server/`: Python backend.
@@ -33,10 +33,11 @@
 
 ### How Agents Should Navigate the Codebase
 - Start UI work in `web/src/app/page.tsx` and `web/src/view/`.
-- Reuse or extend primitives in `web/src/components/ui/` and feature UI in `web/src/components/marketing/`.
+- Reuse or extend primitives in `web/src/components/ui/` and feature UI in `web/src/components/chat-interface/`, `web/src/components/sidebar/`, or `web/src/components/reference-tables/` depending on the view.
 - Check shared helpers in `web/src/lib/utils.ts`.
 - Backend routes live in `server/main.py`; settings and DB config in `server/core/config.py`.
 - Infra and local services are defined in `infra/docker-compose.yml`.
+ - Keep view-specific components grouped: chat interface in `web/src/components/chat-interface/`, sidebar in `web/src/components/sidebar/`, and reference tables in `web/src/components/reference-tables/`.
 
 ### Common Commands (Dev/Quality)
 - Install deps: `make install` (runs `uv sync` + `pnpm install`).
