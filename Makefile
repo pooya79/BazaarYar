@@ -17,7 +17,7 @@ server:
 	source server/.venv/bin/activate && python -m uvicorn server.main:app --reload
 
 web:
-	cd web && pnpm dev
+	cd web && set -a && . ../.env && set +a && pnpm dev
 
 db:
 	docker compose -f infra/docker-compose.yml up -d

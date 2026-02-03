@@ -3,7 +3,6 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  botResponses,
   brandVoices,
   initialChats,
   library,
@@ -20,6 +19,7 @@ import type {
   ChatItem,
   Message,
 } from "@/components/marketing/types";
+import { streamAgent } from "@/lib/api/clients/agent.client";
 import { cn } from "@/lib/utils";
 import type {
   ReferenceTable,
@@ -50,10 +50,22 @@ export function ChatInterfaceView() {
   const [messageInput, setMessageInput] = useState("");
   const [brandVoiceIndex, setBrandVoiceIndex] = useState(0);
   const messageId = useRef(0);
-  const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const referenceTableCounter = useRef(1);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamStateRef = useRef({
+    textId: null as number | null,
+    reasoningId: null as number | null,
+    toolDelta: new Map<
+      number,
+      { id: number; name?: string; args?: string; callId?: string }
+    >(),
+  });
+  const historyRef = useRef<{ role: "user" | "assistant"; content: string }[]>(
+    [],
+  );
+  const hasStreamedRef = useRef(false);
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
     const allItems = [...tools, ...library];
@@ -83,41 +95,155 @@ export function ChatInterfaceView() {
 
   useEffect(() => {
     return () => {
-      if (typingTimeout.current) {
-        clearTimeout(typingTimeout.current);
-      }
+      streamAbortRef.current?.abort();
     };
   }, []);
 
-  const addMessage = (text: string, sender: Message["sender"]) => {
+  const addMessage = (
+    text: string,
+    sender: Message["sender"],
+    kind?: Message["kind"],
+  ) => {
     const nextMessage: Message = {
       id: messageId.current++,
       sender,
       text,
       time: formatTime(new Date()),
+      kind,
     };
     setMessages((prev) => [...prev, nextMessage]);
   };
 
-  const startConversation = (text: string) => {
-    if (typingTimeout.current) {
-      clearTimeout(typingTimeout.current);
+  const updateMessageText = (id: number, nextText: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === id ? { ...message, text: nextText } : message,
+      ),
+    );
+  };
+
+  const appendMessageText = (id: number, nextChunk: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === id
+          ? { ...message, text: `${message.text}${nextChunk}` }
+          : message,
+      ),
+    );
+  };
+
+  const formatMetaBlock = (label: string, payload: unknown) => {
+    if (payload === null || payload === undefined) {
+      return "";
     }
+    if (typeof payload === "string") {
+      return `${label}\n${payload}`;
+    }
+    try {
+      return `${label}\n${JSON.stringify(payload, null, 2)}`;
+    } catch {
+      return `${label}\n${String(payload)}`;
+    }
+  };
+
+  const formatToolDelta = (entry: {
+    name?: string;
+    args?: string;
+    callId?: string;
+  }) => {
+    // Tool deltas can arrive as partial JSON, so keep raw args and add a header.
+    const headerParts = [`name: ${entry.name ?? "unknown"}`];
+    if (entry.callId) {
+      headerParts.push(`id: ${entry.callId}`);
+    }
+    const header = headerParts.join(" | ");
+    return entry.args ? `${header}\n${entry.args}` : header;
+  };
+
+  const formatToolCall = (event: {
+    name?: string | null;
+    id?: string | null;
+    call_type?: string | null;
+    args?: Record<string, unknown>;
+  }) => {
+    const lines = [`name: ${event.name ?? "unknown"}`];
+    if (event.call_type) {
+      lines.push(`call_type: ${event.call_type}`);
+    }
+    if (event.id) {
+      lines.push(`id: ${event.id}`);
+    }
+    if (event.args) {
+      lines.push("args:");
+      lines.push(JSON.stringify(event.args, null, 2));
+    }
+    return lines.join("\n");
+  };
+
+  const formatToolResult = (event: {
+    tool_call_id?: string | null;
+    content: string;
+  }) => {
+    const lines = [];
+    if (event.tool_call_id) {
+      lines.push(`tool_call_id: ${event.tool_call_id}`);
+    }
+    lines.push(event.content);
+    return lines.join("\n");
+  };
+
+  const resetStreamState = () => {
+    streamStateRef.current = {
+      textId: null,
+      reasoningId: null,
+      toolDelta: new Map(),
+    };
+    hasStreamedRef.current = false;
+  };
+
+  const ensureStreamMessage = (
+    key: "textId" | "reasoningId",
+    initialText: string,
+  ) => {
+    const currentId = streamStateRef.current[key];
+    if (currentId !== null) {
+      return currentId;
+    }
+    const id = messageId.current++;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id,
+        sender: "bot",
+        text: initialText,
+        time: formatTime(new Date()),
+        kind: key === "reasoningId" ? "reasoning" : "assistant",
+      },
+    ]);
+    streamStateRef.current[key] = id;
+    return id;
+  };
+
+  const startConversation = (text: string) => {
     setIsTyping(false);
     const firstMessage: Message = {
       id: messageId.current++,
       sender: "bot",
       text,
       time: formatTime(new Date()),
+      kind: "assistant",
     };
     setMessages([firstMessage]);
   };
 
-  const handleSend = (overrideText?: string) => {
+  const handleSend = async (overrideText?: string) => {
     const baseText =
       typeof overrideText === "string" ? overrideText : messageInput;
     const text = baseText.trim();
     if (!text) return;
+
+    streamAbortRef.current?.abort();
+    resetStreamState();
 
     addMessage(text, "user");
     setMessageInput("");
@@ -127,15 +253,125 @@ export function ChatInterfaceView() {
     }
 
     setIsTyping(true);
-    typingTimeout.current = setTimeout(
-      () => {
-        const response =
-          botResponses[Math.floor(Math.random() * botResponses.length)];
-        setIsTyping(false);
-        addMessage(response, "bot");
-      },
-      1400 + Math.random() * 900,
-    );
+
+    const historySnapshot = historyRef.current;
+    historyRef.current = [...historySnapshot, { role: "user", content: text }];
+
+    const abortController = new AbortController();
+    streamAbortRef.current = abortController;
+
+    try {
+      await streamAgent({
+        message: text,
+        history: historySnapshot,
+        signal: abortController.signal,
+        onEvent: (event) => {
+          if (!hasStreamedRef.current) {
+            setIsTyping(false);
+            hasStreamedRef.current = true;
+          }
+          if (event.type === "text_delta") {
+            const id = ensureStreamMessage("textId", "");
+            appendMessageText(id, event.content);
+            return;
+          }
+          if (event.type === "reasoning_delta") {
+            const id = ensureStreamMessage("reasoningId", "");
+            appendMessageText(id, event.content);
+            return;
+          }
+          if (event.type === "tool_call_delta") {
+            const index = event.index ?? 0;
+            let entry = streamStateRef.current.toolDelta.get(index);
+            if (!entry) {
+              const id = messageId.current++;
+              entry = { id, name: event.name ?? "", args: "" };
+              streamStateRef.current.toolDelta.set(index, entry);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id,
+                  sender: "bot",
+                  text: "",
+                  time: formatTime(new Date()),
+                  kind: "tool_call",
+                },
+              ]);
+            }
+            if (event.name) {
+              entry.name = event.name;
+            }
+            if (event.id) {
+              entry.callId = event.id;
+            }
+            if (event.args) {
+              entry.args = `${entry.args ?? ""}${event.args}`;
+            }
+            updateMessageText(entry.id, formatToolDelta(entry));
+            return;
+          }
+          if (event.type === "tool_call") {
+            let matched = false;
+            if (event.id) {
+              for (const entry of streamStateRef.current.toolDelta.values()) {
+                if (entry.callId === event.id) {
+                  updateMessageText(entry.id, formatToolCall(event));
+                  matched = true;
+                  break;
+                }
+              }
+            }
+            if (!matched) {
+              addMessage(formatToolCall(event), "bot", "tool_call");
+            }
+            return;
+          }
+          if (event.type === "tool_result") {
+            addMessage(formatToolResult(event), "bot", "tool_result");
+            return;
+          }
+          if (event.type === "final") {
+            const id = ensureStreamMessage("textId", "");
+            updateMessageText(id, event.output_text);
+            if (event.output_text) {
+              historyRef.current = [
+                ...historyRef.current,
+                { role: "assistant", content: event.output_text },
+              ];
+            }
+            const usageText = formatMetaBlock("usage", event.usage);
+            if (usageText) {
+              addMessage(usageText, "bot", "meta");
+            }
+            const metadataText = formatMetaBlock(
+              "response_metadata",
+              event.response_metadata,
+            );
+            if (metadataText) {
+              addMessage(metadataText, "bot", "meta");
+            }
+            setIsTyping(false);
+            return;
+          }
+        },
+      });
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        return;
+      }
+      setIsTyping(false);
+      addMessage(
+        error instanceof Error
+          ? `Something went wrong: ${error.message}`
+          : "Something went wrong while streaming the response.",
+        "bot",
+        "meta",
+      );
+    } finally {
+      if (streamAbortRef.current === abortController) {
+        streamAbortRef.current = null;
+      }
+    }
   };
 
   const handleToolClick = (toolId: string) => {
@@ -150,19 +386,19 @@ export function ChatInterfaceView() {
     if (!chat) return;
     setActiveChatId(chatId);
     setChatMenuOpenId(null);
+    historyRef.current = [];
     startConversation(`Loaded chat: ${chat.title}. How can I help you next?`);
   };
 
   const handleNewChat = () => {
-    if (typingTimeout.current) {
-      clearTimeout(typingTimeout.current);
-    }
+    streamAbortRef.current?.abort();
     setIsTyping(false);
     setMessages([]);
     setMessageInput("");
     setActiveChatId(null);
     setChatMenuOpenId(null);
     setActiveTool("assistant");
+    historyRef.current = [];
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }

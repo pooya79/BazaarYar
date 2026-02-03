@@ -46,6 +46,11 @@ export function MarketingMessages({
             )}
           </div>
           <div className="flex max-w-[80%] flex-col gap-1.5">
+            {message.sender === "bot" && message.kind && (
+              <div className="px-1 text-[11px] uppercase tracking-[0.2em] text-marketing-text-muted">
+                {message.kind.replace("_", " ")}
+              </div>
+            )}
             <Card
               className={cn(
                 "gap-0 py-0",
@@ -53,9 +58,22 @@ export function MarketingMessages({
                 message.sender === "user"
                   ? "border-0 bg-marketing-text-primary text-marketing-on-primary rounded-br-[4px]"
                   : "rounded-bl-[4px]",
+                message.kind === "reasoning" &&
+                  "border-dashed text-marketing-text-muted",
+                message.kind === "meta" &&
+                  "border-dashed text-marketing-text-muted",
+                (message.kind === "tool_call" || message.kind === "tool_result") &&
+                  "border-marketing-border/80",
               )}
             >
-              <CardContent className={bubbleContentClass}>
+              <CardContent
+                className={cn(
+                  bubbleContentClass,
+                  (message.kind === "tool_call" ||
+                    message.kind === "tool_result") &&
+                    "font-mono text-[0.95rem]",
+                )}
+              >
                 {message.text}
               </CardContent>
             </Card>

@@ -5,6 +5,7 @@ export type Message = {
   sender: "bot" | "user";
   text: string;
   time: string;
+  kind?: "assistant" | "reasoning" | "tool_call" | "tool_result" | "meta";
 };
 
 export type ChatItem = {
