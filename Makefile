@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server web db db-down
+.PHONY: install install-server install-web dev server web db db-down db-migrate db-downgrade
 
 install: install-server install-web
 
@@ -24,3 +24,9 @@ db:
 
 db-down:
 	docker compose -f infra/docker-compose.yml down
+
+db-migrate:
+	source server/.venv/bin/activate && alembic -c server/db/alembic.ini upgrade head
+
+db-downgrade:
+	source server/.venv/bin/activate && alembic -c server/db/alembic.ini downgrade -1
