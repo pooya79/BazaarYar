@@ -1,4 +1,10 @@
-import { Rocket, User } from "lucide-react";
+import {
+  FileSpreadsheet,
+  FileText,
+  Image as ImageIcon,
+  Rocket,
+  User,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Message } from "./types";
@@ -17,10 +23,27 @@ type ChatMessagesProps = {
   isTyping: boolean;
 };
 
-export function ChatMessages({
-  messages,
-  isTyping,
-}: ChatMessagesProps) {
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AttachmentIcon({
+  mediaType,
+}: {
+  mediaType: "image" | "pdf" | "text" | "spreadsheet" | "binary";
+}) {
+  if (mediaType === "image") {
+    return <ImageIcon className="size-4" aria-hidden="true" />;
+  }
+  if (mediaType === "spreadsheet") {
+    return <FileSpreadsheet className="size-4" aria-hidden="true" />;
+  }
+  return <FileText className="size-4" aria-hidden="true" />;
+}
+
+export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6">
       {messages.map((message) => (
@@ -62,7 +85,8 @@ export function ChatMessages({
                   "border-dashed text-marketing-text-muted",
                 message.kind === "meta" &&
                   "border-dashed text-marketing-text-muted",
-                (message.kind === "tool_call" || message.kind === "tool_result") &&
+                (message.kind === "tool_call" ||
+                  message.kind === "tool_result") &&
                   "border-marketing-border/80",
               )}
             >
@@ -74,7 +98,38 @@ export function ChatMessages({
                     "font-mono text-[0.95rem]",
                 )}
               >
-                {message.text}
+                <div className="flex flex-col gap-3">
+                  {message.text ? <div>{message.text}</div> : null}
+                  {message.attachments && message.attachments.length > 0 ? (
+                    <div className="space-y-2">
+                      {message.attachments.map((attachment) => (
+                        <div
+                          key={attachment.id}
+                          className="rounded-xl border border-marketing-border bg-marketing-surface-translucent p-3"
+                        >
+                          <div className="flex items-center gap-2 text-sm">
+                            <AttachmentIcon mediaType={attachment.mediaType} />
+                            <span className="truncate font-medium">
+                              {attachment.filename}
+                            </span>
+                            <span className="ml-auto text-xs text-marketing-text-muted">
+                              {formatBytes(attachment.sizeBytes)}
+                            </span>
+                          </div>
+                          {attachment.mediaType === "image" &&
+                          attachment.localPreviewUrl ? (
+                            /* biome-ignore lint/performance/noImgElement: Blob previews must use a direct object URL source. */
+                            <img
+                              src={attachment.localPreviewUrl}
+                              alt={attachment.filename}
+                              className="mt-2 max-h-52 w-full rounded-lg border border-marketing-border object-contain bg-marketing-bg"
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </CardContent>
             </Card>
             <div className="px-1 text-xs text-marketing-text-muted">

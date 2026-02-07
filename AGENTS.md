@@ -55,6 +55,7 @@ The agent platform is designed to support:
 - Install deps: `make install` (runs `uv sync` + `pnpm install`).
 - Run dev stack: `make dev` (starts DB + backend + frontend).
 - Run backend only: `make server`.
+- Run backend tests: `make test-server`
 - Run frontend only: `make web`.
 - Start/stop DB: `make db` / `make db-down`.
 - Frontend lint/format: `cd web && pnpm lint` / `pnpm format`.

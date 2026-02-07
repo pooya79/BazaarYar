@@ -10,7 +10,11 @@ from server.main import app
 
 
 class _StubAgent:
+    def __init__(self):
+        self.last_payload = None
+
     async def ainvoke(self, payload):
+        self.last_payload = payload
         tool_call = {
             "id": "call-1",
             "name": "utc_time",
@@ -66,7 +70,9 @@ class _StubAgent:
 
 def _patch_agent(monkeypatch):
     # Avoid hitting the real Gemini API during tests.
-    monkeypatch.setattr(agent_api, "get_agent", lambda: _StubAgent())
+    stub = _StubAgent()
+    monkeypatch.setattr(agent_api, "get_agent", lambda: stub)
+    return stub
 
 
 def test_agent_non_stream_response(monkeypatch):
@@ -111,3 +117,64 @@ def test_stream_schema_endpoint():
     assert response.status_code == 200
     schema = response.json()
     assert "oneOf" in schema or "anyOf" in schema
+
+
+def test_agent_request_with_attachment_ids(monkeypatch):
+    stub = _patch_agent(monkeypatch)
+    monkeypatch.setattr(
+        agent_api,
+        "build_attachment_message_parts",
+        lambda attachment_ids: (
+            f"Attachment ids: {', '.join(attachment_ids)}",
+            [
+                {
+                    "type": "image",
+                    "base64": "abcd",
+                    "mime_type": "image/png",
+                }
+            ],
+        ),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent",
+        json={
+            "message": "Summarize this file",
+            "attachment_ids": ["file-123"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert stub.last_payload is not None
+    final_user_message = stub.last_payload["messages"][-1]
+    assert isinstance(final_user_message.content, list)
+    assert final_user_message.content[0]["type"] == "text"
+    assert "Attached file context" in final_user_message.content[1]["text"]
+    assert "Attachment ids: file-123" in final_user_message.content[1]["text"]
+    assert final_user_message.content[2]["type"] == "image"
+
+
+def test_upload_attachments_endpoint(monkeypatch):
+    async def _fake_store(upload):
+        return agent_api.UploadedAttachment(
+            id="file-1",
+            filename=upload.filename or "unknown.txt",
+            content_type=upload.content_type or "text/plain",
+            media_type="text",
+            size_bytes=5,
+            preview_text="hello",
+            extraction_note=None,
+        )
+
+    monkeypatch.setattr(agent_api, "store_uploaded_file", _fake_store)
+    client = TestClient(app)
+    response = client.post(
+        "/api/agent/attachments",
+        files=[("files", ("hello.txt", b"hello", "text/plain"))],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files"][0]["id"] == "file-1"
+    assert payload["files"][0]["filename"] == "hello.txt"

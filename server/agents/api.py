@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field
+from .attachments import build_attachment_message_parts, store_uploaded_file
 from .openailike_agent import extract_trace, get_agent, split_ai_content
 from .usage import extract_usage
 from .streaming_schema import (
@@ -30,6 +31,7 @@ class ChatMessage(BaseModel):
 class AgentRequest(BaseModel):
     message: str | None = None
     history: list[ChatMessage] | None = None
+    attachment_ids: list[str] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -42,6 +44,20 @@ class AgentResponse(BaseModel):
     model: str
 
 
+class UploadedAttachment(BaseModel):
+    id: str
+    filename: str
+    content_type: str
+    media_type: Literal["image", "pdf", "text", "spreadsheet", "binary"]
+    size_bytes: int
+    preview_text: str | None
+    extraction_note: str | None
+
+
+class UploadAttachmentsResponse(BaseModel):
+    files: list[UploadedAttachment]
+
+
 def _build_messages(payload: AgentRequest) -> list[Any]:
     messages: list[Any] = []
     if payload.history:
@@ -50,14 +66,73 @@ def _build_messages(payload: AgentRequest) -> list[Any]:
                 messages.append(AIMessage(content=item.content))
             else:
                 messages.append(HumanMessage(content=item.content))
-    if payload.message:
-        messages.append(HumanMessage(content=payload.message))
+
+    user_message = (payload.message or "").strip()
+    attachment_ids = [item.strip() for item in (payload.attachment_ids or []) if item.strip()]
+    attachment_context = ""
+    attachment_blocks: list[dict[str, Any]] = []
+    if attachment_ids:
+        attachment_context, attachment_blocks = build_attachment_message_parts(attachment_ids)
+
+    if user_message or attachment_context or attachment_blocks:
+        if attachment_blocks:
+            content: list[dict[str, Any]] = []
+            if user_message:
+                content.append({"type": "text", "text": user_message})
+            if attachment_context:
+                content.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            "Attached file context:\n"
+                            f"{attachment_context}\n\n"
+                            "Use extracted content when relevant and call out uncertainty if extraction is incomplete."
+                        ),
+                    }
+                )
+            content.extend(attachment_blocks)
+            messages.append(HumanMessage(content=content))
+        else:
+            content_parts: list[str] = []
+            if user_message:
+                content_parts.append(user_message)
+            if attachment_context:
+                content_parts.append(
+                    "Attached file context:\n"
+                    f"{attachment_context}\n\n"
+                    "Use extracted content when relevant and call out uncertainty if extraction is incomplete."
+                )
+            messages.append(HumanMessage(content="\n\n".join(content_parts)))
     return messages
 
 
 @router.get("/stream/schema")
 async def stream_schema() -> dict[str, Any]:
     return stream_event_schema()
+
+
+@router.post("/attachments", response_model=UploadAttachmentsResponse)
+async def upload_attachments(
+    files: list[UploadFile] = File(...),
+) -> UploadAttachmentsResponse:
+    if not files:
+        raise HTTPException(status_code=400, detail="Provide at least one file.")
+
+    uploaded: list[UploadedAttachment] = []
+    for file in files:
+        stored = await store_uploaded_file(file)
+        uploaded.append(
+            UploadedAttachment(
+                id=stored.id,
+                filename=stored.filename,
+                content_type=stored.content_type,
+                media_type=stored.media_type,
+                size_bytes=stored.size_bytes,
+                preview_text=stored.preview_text,
+                extraction_note=stored.extraction_note,
+            )
+        )
+    return UploadAttachmentsResponse(files=uploaded)
 
 
 @router.post("", response_model=AgentResponse)
@@ -107,9 +182,14 @@ async def stream_agent(payload: AgentRequest) -> StreamingResponse:
                         )
                     content_blocks = getattr(token, "content_blocks", None) or token.content
                     if isinstance(content_blocks, list):
-                        for block in content_blocks:
-                            if not isinstance(block, dict):
+                        for raw_block in content_blocks:
+                            if not isinstance(raw_block, dict):
                                 continue
+                            block = raw_block
+                            if raw_block.get("type") == "non_standard":
+                                nested = raw_block.get("value")
+                                if isinstance(nested, dict):
+                                    block = nested
                             block_type = block.get("type")
                             if block_type in {"thinking", "reasoning", "summary"}:
                                 value = (

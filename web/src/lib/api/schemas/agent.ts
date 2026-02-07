@@ -1,5 +1,27 @@
 import { z } from "zod";
 
+export const attachmentMediaTypeSchema = z.enum([
+  "image",
+  "pdf",
+  "text",
+  "spreadsheet",
+  "binary",
+]);
+
+export const uploadedAttachmentSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  content_type: z.string(),
+  media_type: attachmentMediaTypeSchema,
+  size_bytes: z.number().int().nonnegative(),
+  preview_text: z.string().nullable().optional(),
+  extraction_note: z.string().nullable().optional(),
+});
+
+export const uploadAttachmentsResponseSchema = z.object({
+  files: z.array(uploadedAttachmentSchema),
+});
+
 export const textDeltaSchema = z.object({
   type: z.literal("text_delta"),
   content: z.string(),

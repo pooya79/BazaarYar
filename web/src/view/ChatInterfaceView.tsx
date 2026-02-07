@@ -2,6 +2,10 @@
 
 import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChatEmptyState } from "@/components/chat-interface/ChatEmptyState";
+import { ChatHeader } from "@/components/chat-interface/ChatHeader";
+import { ChatInput } from "@/components/chat-interface/ChatInput";
+import { ChatMessages } from "@/components/chat-interface/ChatMessages";
 import {
   brandVoices,
   initialChats,
@@ -9,16 +13,17 @@ import {
   quickActions,
   tools,
 } from "@/components/chat-interface/constants";
-import { ChatEmptyState } from "@/components/chat-interface/ChatEmptyState";
-import { ChatHeader } from "@/components/chat-interface/ChatHeader";
-import { ChatInput } from "@/components/chat-interface/ChatInput";
-import { ChatMessages } from "@/components/chat-interface/ChatMessages";
-import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
 import type {
   ChatAction,
   ChatItem,
   Message,
 } from "@/components/chat-interface/types";
+import {
+  isReadyComposerAttachment,
+  toMessageAttachment,
+  useComposerAttachments,
+} from "@/components/chat-interface/useComposerAttachments";
+import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
 import { streamAgent } from "@/lib/api/clients/agent.client";
 import { cn } from "@/lib/utils";
 import type {
@@ -48,6 +53,13 @@ export function ChatInterfaceView() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [messageInput, setMessageInput] = useState("");
+  const {
+    pendingAttachments,
+    setPendingAttachments,
+    handlePickFiles,
+    handleRemoveAttachment,
+    clearPendingAttachments,
+  } = useComposerAttachments();
   const [brandVoiceIndex, setBrandVoiceIndex] = useState(0);
   const messageId = useRef(0);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
@@ -103,6 +115,7 @@ export function ChatInterfaceView() {
     text: string,
     sender: Message["sender"],
     kind?: Message["kind"],
+    attachments?: Message["attachments"],
   ) => {
     const nextMessage: Message = {
       id: messageId.current++,
@@ -110,6 +123,7 @@ export function ChatInterfaceView() {
       text,
       time: formatTime(new Date()),
       kind,
+      attachments,
     };
     setMessages((prev) => [...prev, nextMessage]);
   };
@@ -240,13 +254,36 @@ export function ChatInterfaceView() {
     const baseText =
       typeof overrideText === "string" ? overrideText : messageInput;
     const text = baseText.trim();
-    if (!text) return;
+    const uploadingCount = pendingAttachments.filter(
+      (item) => item.status === "uploading",
+    ).length;
+    const readyAttachments = pendingAttachments.filter(
+      isReadyComposerAttachment,
+    );
+
+    if (uploadingCount > 0) {
+      addMessage(
+        "Wait for file uploads to finish before sending.",
+        "bot",
+        "meta",
+      );
+      return;
+    }
+
+    if (!text && readyAttachments.length === 0) return;
 
     streamAbortRef.current?.abort();
     resetStreamState();
 
-    addMessage(text, "user");
+    const userAttachments = readyAttachments.map(toMessageAttachment);
+
+    addMessage(text || "Sent attachments.", "user", undefined, userAttachments);
     setMessageInput("");
+    setPendingAttachments((prev) =>
+      prev.filter(
+        (item) => !readyAttachments.some((ready) => ready.id === item.id),
+      ),
+    );
 
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -255,7 +292,19 @@ export function ChatInterfaceView() {
     setIsTyping(true);
 
     const historySnapshot = historyRef.current;
-    historyRef.current = [...historySnapshot, { role: "user", content: text }];
+    const attachmentNameList = readyAttachments
+      .map((item) => item.filename)
+      .join(", ");
+    const historyContent = [
+      text || "Attached files for analysis.",
+      attachmentNameList ? `Attached files: ${attachmentNameList}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    historyRef.current = [
+      ...historySnapshot,
+      { role: "user", content: historyContent },
+    ];
 
     const abortController = new AbortController();
     streamAbortRef.current = abortController;
@@ -264,6 +313,7 @@ export function ChatInterfaceView() {
       await streamAgent({
         message: text,
         history: historySnapshot,
+        attachmentIds: readyAttachments.map((item) => item.fileId),
         signal: abortController.signal,
         onEvent: (event) => {
           if (!hasStreamedRef.current) {
@@ -386,6 +436,7 @@ export function ChatInterfaceView() {
     if (!chat) return;
     setActiveChatId(chatId);
     setChatMenuOpenId(null);
+    clearPendingAttachments();
     historyRef.current = [];
     startConversation(`Loaded chat: ${chat.title}. How can I help you next?`);
   };
@@ -398,6 +449,7 @@ export function ChatInterfaceView() {
     setActiveChatId(null);
     setChatMenuOpenId(null);
     setActiveTool("assistant");
+    clearPendingAttachments();
     historyRef.current = [];
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -431,6 +483,7 @@ export function ChatInterfaceView() {
       if (activeChatId === chatId) {
         setActiveChatId(null);
         setMessages([]);
+        clearPendingAttachments();
       }
       return;
     }
@@ -525,6 +578,15 @@ export function ChatInterfaceView() {
 
   const isReferenceTables = activeTool === "reference-tables";
   const hasMessages = messages.length > 0;
+  const hasReadyAttachment = pendingAttachments.some(
+    (item) => item.status === "ready",
+  );
+  const hasUploadingAttachment = pendingAttachments.some(
+    (item) => item.status === "uploading",
+  );
+  const canSend =
+    (messageInput.trim().length > 0 || hasReadyAttachment) &&
+    !hasUploadingAttachment;
 
   return (
     <div className="flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
@@ -593,6 +655,10 @@ export function ChatInterfaceView() {
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               onSend={handleSend}
+              canSend={canSend}
+              attachments={pendingAttachments}
+              onPickFiles={handlePickFiles}
+              onRemoveAttachment={handleRemoveAttachment}
               brandVoice={brandVoices[brandVoiceIndex]}
               onToggleBrandVoice={toggleBrandVoice}
             />

@@ -1,5 +1,8 @@
 import { buildUrl, normalizeError } from "../http";
-import { streamEventSchema } from "../schemas/agent";
+import {
+  streamEventSchema,
+  uploadAttachmentsResponseSchema,
+} from "../schemas/agent";
 import type { StreamEvent } from "../types";
 
 export type AgentChatMessage = {
@@ -7,9 +10,20 @@ export type AgentChatMessage = {
   content: string;
 };
 
+export type UploadedAttachment = {
+  id: string;
+  filename: string;
+  contentType: string;
+  mediaType: "image" | "pdf" | "text" | "spreadsheet" | "binary";
+  sizeBytes: number;
+  previewText?: string | null;
+  extractionNote?: string | null;
+};
+
 export type StreamAgentOptions = {
   message: string;
   history?: AgentChatMessage[];
+  attachmentIds?: string[];
   signal?: AbortSignal;
   onEvent: (event: StreamEvent) => void;
 };
@@ -36,9 +50,55 @@ const parseSseBlock = (block: string) => {
   };
 };
 
+export async function uploadAgentAttachments(
+  files: File[],
+  signal?: AbortSignal,
+): Promise<UploadedAttachment[]> {
+  if (files.length === 0) {
+    return [];
+  }
+
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  const response = await fetch(buildUrl("/api/agent/attachments"), {
+    method: "POST",
+    body: formData,
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = text;
+      }
+    }
+    throw normalizeError(response, payload);
+  }
+
+  const payload = await response.json();
+  const parsed = uploadAttachmentsResponseSchema.parse(payload);
+  return parsed.files.map((item) => ({
+    id: item.id,
+    filename: item.filename,
+    contentType: item.content_type,
+    mediaType: item.media_type,
+    sizeBytes: item.size_bytes,
+    previewText: item.preview_text,
+    extractionNote: item.extraction_note,
+  }));
+}
+
 export async function streamAgent({
   message,
   history,
+  attachmentIds,
   signal,
   onEvent,
 }: StreamAgentOptions) {
@@ -47,7 +107,11 @@ export async function streamAgent({
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({
+      message,
+      history,
+      attachment_ids: attachmentIds,
+    }),
     signal,
   });
 

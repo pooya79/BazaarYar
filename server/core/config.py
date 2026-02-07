@@ -83,6 +83,15 @@ class Settings(BaseSettings):
         validation_alias="OPENAILIKE_BASE_URL",
     )
 
+    upload_storage_dir: str = Field(
+        default="server/storage/uploads",
+        validation_alias="UPLOAD_STORAGE_DIR",
+    )
+    upload_max_size_bytes: int = Field(
+        default=15 * 1024 * 1024,
+        validation_alias="UPLOAD_MAX_SIZE_BYTES",
+    )
+
     @computed_field
     @property
     def frontend_origin_list(self) -> list[str]:

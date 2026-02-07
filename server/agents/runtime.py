@@ -42,6 +42,16 @@ def build_agent_runtime(model: Any):
     )
 
 
+def _normalize_content_block(block: Any) -> dict[str, Any] | None:
+    if not isinstance(block, dict):
+        return None
+    if block.get("type") == "non_standard":
+        nested = block.get("value")
+        if isinstance(nested, dict):
+            return nested
+    return block
+
+
 def split_openai_like_content(message: AIMessage) -> tuple[list[str], list[str]]:
     reasoning: list[str] = []
     text: list[str] = []
@@ -49,8 +59,9 @@ def split_openai_like_content(message: AIMessage) -> tuple[list[str], list[str]]
     content = getattr(message, "content_blocks", None) or message.content
     if isinstance(content, list):
         # OpenAI-compatible responses can return mixed content blocks.
-        for block in content:
-            if not isinstance(block, dict):
+        for raw_block in content:
+            block = _normalize_content_block(raw_block)
+            if block is None:
                 continue
             block_type = block.get("type")
             if block_type in {"thinking", "reasoning", "summary", "reasoning_content"}:
@@ -100,8 +111,9 @@ def split_gemini_content(message: AIMessage) -> tuple[list[str], list[str]]:
     content = getattr(message, "content_blocks", None) or message.content
     if isinstance(content, list):
         # Gemini 3 returns mixed content blocks, so extract thinking vs text explicitly.
-        for block in content:
-            if not isinstance(block, dict):
+        for raw_block in content:
+            block = _normalize_content_block(raw_block)
+            if block is None:
                 continue
             block_type = block.get("type")
             if block_type == "thinking" and block.get("thinking"):
