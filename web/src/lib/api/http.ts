@@ -1,5 +1,5 @@
-import type { ApiError } from "./types";
 import { env } from "./schemas/env";
+import type { ApiError } from "./types";
 
 type HttpOptions = RequestInit & {
   authToken?: string;
@@ -40,7 +40,8 @@ const mergeHeaders = (options: HttpOptions) => {
   }
 
   const hasBody = Boolean(options.body);
-  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const isForm =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   if (hasBody && !isForm && !headers.has("Content-Type")) {
     headers.set("Content-Type", jsonHeaders["Content-Type"]);
   }

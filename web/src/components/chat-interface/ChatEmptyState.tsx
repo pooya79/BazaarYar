@@ -11,10 +11,7 @@ type ChatEmptyStateProps = {
   onAction: (prompt: string) => void;
 };
 
-export function ChatEmptyState({
-  actions,
-  onAction,
-}: ChatEmptyStateProps) {
+export function ChatEmptyState({ actions, onAction }: ChatEmptyStateProps) {
   return (
     <div className="mx-auto max-w-[800px] pt-[60px] text-center">
       <div className="mb-6 inline-flex h-14 w-14 items-center justify-center text-marketing-primary motion-safe:animate-bounce">
