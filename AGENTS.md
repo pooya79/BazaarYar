@@ -1,11 +1,20 @@
 # AGENTS
 
-- Use theme variables when styling pages and components (prefer Tailwind theme tokens over raw CSS variables or literal colors).
-- Add code comments on tricky parts
-- To load env variables in server you should define them in `server/core/config.py`.
-- Use async routes for server
-
 ## Project Overview
+
+### Product Vision
+This project is building a marketing agent with a ChatGPT-like interface.
+Its goal is to help marketing teams turn campaign data into clear insights and actionable next steps.
+
+Users can:
+- Upload campaign reports and ask questions about performance.
+- Request new campaign ideas and strategy suggestions.
+- Create dynamic report tables that agents can query for analytics (aggregations, filtering, and data exploration).
+
+The agent platform is designed to support:
+- Memory across conversations.
+- Tool calling for structured actions and data workflows.
+- Multimedia inputs (for example files and other non-text context sources).
 
 ### High-Level Architecture
 - Frontend: Next.js app in `web/` (React + Tailwind CSS + Radix UI).
@@ -13,31 +22,34 @@
 - Services: PostgreSQL (and pgAdmin) via Docker Compose in `infra/`.
 
 ### Key Directories
-- `web/`: Frontend app.
-- `web/src/app/`: Next.js App Router routes/layout.
-- `web/src/components/`: UI primitives (`ui/`) and feature UI (`chat-interface/`, `sidebar/`, `reference-tables/`).
-- `web/src/view/`: Page-level view components.
-- `web/src/lib/`: Shared helpers/utilities.
-- `server/`: Python backend.
-- `server/main.py`: FastAPI entrypoint.
-- `server/core/`: Config and environment settings.
-- `server/domain/`: Domain models/tables (currently empty scaffolding).
-- `server/tests/`: Backend tests (currently empty).
-- `infra/`: Docker Compose + pgAdmin config.
+- `infra/`: Local infrastructure setup (Docker Compose, database services, pgAdmin).
+- `infra/pgadmin/`: pgAdmin bootstrap files (saved servers and connection auth data).
+- `scripts/`: Project utility scripts for local automation and developer workflows.
+- `server/`: FastAPI backend application source and Python project config.
+- `server/agents/`: Agent runtime, API layer, streaming schema, and model integrations.
+- `server/core/`: Core backend settings and environment-driven configuration.
+- `server/db/`: SQLAlchemy models, DB session utilities, and Alembic integration.
+- `server/db/alembic/`: Migration environment and migration version files.
+- `server/domain/`: Domain layer modules for business-centric structures.
+- `server/domain/tables/`: Domain table definitions and related persistence mappings.
+- `server/tests/`: Backend test suite (API and service-level behavior checks).
+- `web/`: Next.js frontend workspace, build/tooling config, and client app source.
+- `web/public/`: Static assets served directly by the frontend app.
+- `web/src/`: Frontend source code root (routes, views, components, shared libraries).
+- `web/src/app/`: Next.js App Router entrypoints, layouts, and route-level UI.
+- `web/src/components/`: Reusable UI components and feature-specific component groups.
+- `web/src/components/chat-interface/`: Chat experience components (header, input, messages, types/constants).
+- `web/src/components/sidebar/`: Sidebar/navigation components for the chat workspace.
+- `web/src/components/ui/`: Shared design-system primitives built on Radix + Tailwind.
+- `web/src/lib/`: Frontend utilities and shared non-visual logic.
+- `web/src/lib/api/`: API client layer (HTTP helpers, typed schemas, and client wrappers).
+- `web/src/view/`: Page-level composed views built from components and data hooks.
 
 ### Core Frameworks/Libraries
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, lucide-react, class-variance-authority, clsx, tailwind-merge.
 - Tooling (frontend): Biome (lint/format), pnpm.
 - Backend: FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic Settings, psycopg, LangChain.
 - Tooling (backend): uv (dependency sync), Python >= 3.13.
-
-### How Agents Should Navigate the Codebase
-- Start UI work in `web/src/app/page.tsx` and `web/src/view/`.
-- Reuse or extend primitives in `web/src/components/ui/` and feature UI in `web/src/components/chat-interface/`, `web/src/components/sidebar/`, or `web/src/components/reference-tables/` depending on the view.
-- Check shared helpers in `web/src/lib/utils.ts`.
-- Backend routes live in `server/main.py`; settings and DB config in `server/core/config.py`.
-- Infra and local services are defined in `infra/docker-compose.yml`.
- - Keep view-specific components grouped: chat interface in `web/src/components/chat-interface/`, sidebar in `web/src/components/sidebar/`, and reference tables in `web/src/components/reference-tables/`.
 
 ### Common Commands (Dev/Quality)
 - Install deps: `make install` (runs `uv sync` + `pnpm install`).
@@ -50,3 +62,7 @@
 ### Conventions & Constraints
 - Use Tailwind theme tokens for styling (avoid literal colors/CSS vars).
 - Keep any single file under 700 LOC; split large work into modules.
+- Use theme variables when styling pages and components (prefer Tailwind theme tokens over raw CSS variables or literal colors).
+- Add code comments on tricky parts
+- To load env variables in server you should define them in `server/core/config.py`.
+- Use async routes for server
