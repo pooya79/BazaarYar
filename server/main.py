@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .agents.api import router as agent_router
+from .agents.api import conversations_router, router as agent_router
 from .core.config import get_settings
 from .db.session import async_engine
 
@@ -9,6 +9,7 @@ settings = get_settings()
 
 app = FastAPI(title="BazaarYar API", docs_url="/api/docs")
 app.include_router(agent_router)
+app.include_router(conversations_router)
 
 app.add_middleware(
     CORSMiddleware,

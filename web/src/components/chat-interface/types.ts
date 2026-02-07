@@ -16,7 +16,13 @@ export type Message = {
   sender: "bot" | "user";
   text: string;
   time: string;
-  kind?: "assistant" | "reasoning" | "tool_call" | "tool_result" | "meta";
+  kind?:
+    | "assistant"
+    | "reasoning"
+    | "summary"
+    | "tool_call"
+    | "tool_result"
+    | "meta";
   attachments?: MessageAttachment[];
 };
 

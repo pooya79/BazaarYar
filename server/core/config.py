@@ -91,6 +91,18 @@ class Settings(BaseSettings):
         default=15 * 1024 * 1024,
         validation_alias="UPLOAD_MAX_SIZE_BYTES",
     )
+    context_max_tokens: int = Field(
+        default=16_000,
+        validation_alias="CONTEXT_MAX_TOKENS",
+    )
+    context_target_tokens: int = Field(
+        default=12_000,
+        validation_alias="CONTEXT_TARGET_TOKENS",
+    )
+    context_keep_last_turns: int = Field(
+        default=6,
+        validation_alias="CONTEXT_KEEP_LAST_TURNS",
+    )
 
     @computed_field
     @property

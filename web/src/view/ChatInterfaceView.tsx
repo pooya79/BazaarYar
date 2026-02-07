@@ -1,14 +1,14 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import type { KeyboardEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatEmptyState } from "@/components/chat-interface/ChatEmptyState";
 import { ChatHeader } from "@/components/chat-interface/ChatHeader";
 import { ChatInput } from "@/components/chat-interface/ChatInput";
 import { ChatMessages } from "@/components/chat-interface/ChatMessages";
 import {
   brandVoices,
-  initialChats,
   library,
   quickActions,
   tools,
@@ -24,8 +24,21 @@ import {
   useComposerAttachments,
 } from "@/components/chat-interface/useComposerAttachments";
 import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
-import { streamAgent } from "@/lib/api/clients/agent.client";
+import {
+  getAgentConversation,
+  listAgentConversations,
+  streamAgent,
+} from "@/lib/api/clients/agent.client";
 import { cn } from "@/lib/utils";
+import {
+  formatMetaBlock,
+  formatTime,
+  formatToolCall,
+  formatToolDelta,
+  formatToolResult,
+  mapConversationKind,
+  summarizeConversationMeta,
+} from "@/view/chatViewUtils";
 import type {
   ReferenceTable,
   ReferenceTableAction,
@@ -35,16 +48,17 @@ import {
   ReferenceTablesView,
 } from "@/view/ReferenceTablesView";
 
-function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 export function ChatInterfaceView() {
+  const router = useRouter();
+  const params = useParams<{ conversationId?: string }>();
+  const routeConversationId =
+    typeof params?.conversationId === "string" ? params.conversationId : null;
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [activeTool, setActiveTool] = useState("assistant");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [chatItems, setChatItems] = useState<ChatItem[]>(initialChats);
+  const [chatItems, setChatItems] = useState<ChatItem[]>([]);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const [referenceTables, setReferenceTables] = useState<ReferenceTable[]>(
     initialReferenceTables,
@@ -74,9 +88,6 @@ export function ChatInterfaceView() {
       { id: number; name?: string; args?: string; callId?: string }
     >(),
   });
-  const historyRef = useRef<{ role: "user" | "assistant"; content: string }[]>(
-    [],
-  );
   const hasStreamedRef = useRef(false);
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
@@ -110,6 +121,136 @@ export function ChatInterfaceView() {
       streamAbortRef.current?.abort();
     };
   }, []);
+
+  const refreshConversations = async () => {
+    const conversations = await listAgentConversations();
+    setChatItems(
+      conversations.map((conversation) => ({
+        id: conversation.id,
+        title: conversation.title?.trim() || "Untitled conversation",
+        meta: summarizeConversationMeta(conversation),
+        status: "active",
+        starred: false,
+      })),
+    );
+  };
+
+  const loadConversation = useCallback(async (conversationId: string) => {
+    const conversation = await getAgentConversation(conversationId);
+    setActiveChatId(conversation.id);
+    setMessages(
+      conversation.messages
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        )
+        .map((message) => ({
+          id: messageId.current++,
+          sender: message.role === "user" ? "user" : "bot",
+          text: message.content,
+          time: formatTime(new Date(message.createdAt)),
+          kind:
+            message.role === "assistant"
+              ? mapConversationKind(message.messageKind)
+              : undefined,
+          attachments: message.attachments
+            .sort((a, b) => a.position - b.position)
+            .map((attachment) => ({
+              id: attachment.id,
+              filename: attachment.filename,
+              contentType: attachment.contentType,
+              mediaType: attachment.mediaType,
+              sizeBytes: attachment.sizeBytes,
+              previewText: attachment.previewText,
+              extractionNote: attachment.extractionNote,
+              localPreviewUrl:
+                attachment.mediaType === "image"
+                  ? attachment.downloadUrl
+                  : undefined,
+            })),
+        })),
+    );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const conversations = await listAgentConversations();
+        if (cancelled) {
+          return;
+        }
+        setChatItems(
+          conversations.map((conversation) => ({
+            id: conversation.id,
+            title: conversation.title?.trim() || "Untitled conversation",
+            meta: summarizeConversationMeta(conversation),
+            status: "active",
+            starred: false,
+          })),
+        );
+      } catch {
+        if (cancelled) {
+          return;
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: messageId.current++,
+            sender: "bot",
+            text: "Failed to load saved conversations.",
+            time: formatTime(new Date()),
+            kind: "meta",
+          },
+        ]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    streamAbortRef.current?.abort();
+    setIsTyping(false);
+
+    if (!routeConversationId) {
+      setActiveChatId(null);
+      setMessages([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setActiveChatId(routeConversationId);
+
+    (async () => {
+      try {
+        await loadConversation(routeConversationId);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setActiveChatId(null);
+        setMessages([
+          {
+            id: messageId.current++,
+            sender: "bot",
+            text:
+              error instanceof Error
+                ? `Failed to load conversation: ${error.message}`
+                : "Failed to load conversation.",
+            time: formatTime(new Date()),
+            kind: "meta",
+          },
+        ]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routeConversationId, loadConversation]);
 
   const addMessage = (
     text: string,
@@ -146,66 +287,6 @@ export function ChatInterfaceView() {
     );
   };
 
-  const formatMetaBlock = (label: string, payload: unknown) => {
-    if (payload === null || payload === undefined) {
-      return "";
-    }
-    if (typeof payload === "string") {
-      return `${label}\n${payload}`;
-    }
-    try {
-      return `${label}\n${JSON.stringify(payload, null, 2)}`;
-    } catch {
-      return `${label}\n${String(payload)}`;
-    }
-  };
-
-  const formatToolDelta = (entry: {
-    name?: string;
-    args?: string;
-    callId?: string;
-  }) => {
-    // Tool deltas can arrive as partial JSON, so keep raw args and add a header.
-    const headerParts = [`name: ${entry.name ?? "unknown"}`];
-    if (entry.callId) {
-      headerParts.push(`id: ${entry.callId}`);
-    }
-    const header = headerParts.join(" | ");
-    return entry.args ? `${header}\n${entry.args}` : header;
-  };
-
-  const formatToolCall = (event: {
-    name?: string | null;
-    id?: string | null;
-    call_type?: string | null;
-    args?: Record<string, unknown>;
-  }) => {
-    const lines = [`name: ${event.name ?? "unknown"}`];
-    if (event.call_type) {
-      lines.push(`call_type: ${event.call_type}`);
-    }
-    if (event.id) {
-      lines.push(`id: ${event.id}`);
-    }
-    if (event.args) {
-      lines.push("args:");
-      lines.push(JSON.stringify(event.args, null, 2));
-    }
-    return lines.join("\n");
-  };
-
-  const formatToolResult = (event: {
-    tool_call_id?: string | null;
-    content: string;
-  }) => {
-    const lines = [];
-    if (event.tool_call_id) {
-      lines.push(`tool_call_id: ${event.tool_call_id}`);
-    }
-    lines.push(event.content);
-    return lines.join("\n");
-  };
-
   const resetStreamState = () => {
     streamStateRef.current = {
       textId: null,
@@ -236,18 +317,6 @@ export function ChatInterfaceView() {
     ]);
     streamStateRef.current[key] = id;
     return id;
-  };
-
-  const startConversation = (text: string) => {
-    setIsTyping(false);
-    const firstMessage: Message = {
-      id: messageId.current++,
-      sender: "bot",
-      text,
-      time: formatTime(new Date()),
-      kind: "assistant",
-    };
-    setMessages([firstMessage]);
   };
 
   const handleSend = async (overrideText?: string) => {
@@ -291,28 +360,13 @@ export function ChatInterfaceView() {
 
     setIsTyping(true);
 
-    const historySnapshot = historyRef.current;
-    const attachmentNameList = readyAttachments
-      .map((item) => item.filename)
-      .join(", ");
-    const historyContent = [
-      text || "Attached files for analysis.",
-      attachmentNameList ? `Attached files: ${attachmentNameList}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    historyRef.current = [
-      ...historySnapshot,
-      { role: "user", content: historyContent },
-    ];
-
     const abortController = new AbortController();
     streamAbortRef.current = abortController;
 
     try {
       await streamAgent({
         message: text,
-        history: historySnapshot,
+        conversationId: activeChatId,
         attachmentIds: readyAttachments.map((item) => item.fileId),
         signal: abortController.signal,
         onEvent: (event) => {
@@ -383,11 +437,11 @@ export function ChatInterfaceView() {
           if (event.type === "final") {
             const id = ensureStreamMessage("textId", "");
             updateMessageText(id, event.output_text);
-            if (event.output_text) {
-              historyRef.current = [
-                ...historyRef.current,
-                { role: "assistant", content: event.output_text },
-              ];
+            if (
+              event.conversation_id &&
+              event.conversation_id !== activeChatId
+            ) {
+              router.replace(`/c/${event.conversation_id}`);
             }
             const usageText = formatMetaBlock("usage", event.usage);
             if (usageText) {
@@ -400,6 +454,7 @@ export function ChatInterfaceView() {
             if (metadataText) {
               addMessage(metadataText, "bot", "meta");
             }
+            void refreshConversations();
             setIsTyping(false);
             return;
           }
@@ -432,13 +487,11 @@ export function ChatInterfaceView() {
   };
 
   const handleChatSelect = (chatId: string) => {
-    const chat = chatItems.find((item) => item.id === chatId);
-    if (!chat) return;
-    setActiveChatId(chatId);
     setChatMenuOpenId(null);
-    clearPendingAttachments();
-    historyRef.current = [];
-    startConversation(`Loaded chat: ${chat.title}. How can I help you next?`);
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
+    router.push(`/c/${chatId}`);
   };
 
   const handleNewChat = () => {
@@ -450,15 +503,15 @@ export function ChatInterfaceView() {
     setChatMenuOpenId(null);
     setActiveTool("assistant");
     clearPendingAttachments();
-    historyRef.current = [];
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
+    router.push("/");
   };
 
   const handleChatAction = (action: ChatAction, chatId: string) => {
     if (action === "use") {
-      handleChatSelect(chatId);
+      void handleChatSelect(chatId);
       setChatMenuOpenId(null);
       return;
     }
@@ -484,6 +537,7 @@ export function ChatInterfaceView() {
         setActiveChatId(null);
         setMessages([]);
         clearPendingAttachments();
+        router.push("/");
       }
       return;
     }

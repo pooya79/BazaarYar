@@ -43,6 +43,7 @@ class FinalEvent(BaseModel):
     output_text: str
     usage: dict[str, Any] | None = None
     response_metadata: dict[str, Any] | None = None
+    conversation_id: str | None = None
 
 
 StreamEvent = Union[

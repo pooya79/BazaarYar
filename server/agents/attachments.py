@@ -10,13 +10,16 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
+from server.db.models import Attachment
 
 AttachmentMediaType = Literal["image", "pdf", "text", "spreadsheet", "binary"]
 
@@ -75,12 +78,26 @@ def _storage_root() -> Path:
         root = project_root / root
     root.mkdir(parents=True, exist_ok=True)
     (root / "files").mkdir(parents=True, exist_ok=True)
-    (root / "metadata").mkdir(parents=True, exist_ok=True)
     return root
 
 
 def _metadata_path(file_id: str) -> Path:
     return _storage_root() / "metadata" / f"{file_id}.json"
+
+
+def list_legacy_metadata_attachments() -> list[StoredAttachment]:
+    metadata_dir = _storage_root() / "metadata"
+    if not metadata_dir.exists():
+        return []
+
+    items: list[StoredAttachment] = []
+    for path in metadata_dir.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            items.append(StoredAttachment.model_validate(payload))
+        except Exception:
+            continue
+    return items
 
 
 def _normalize_filename(filename: str) -> str:
@@ -356,10 +373,6 @@ async def store_uploaded_file(upload: UploadFile) -> StoredAttachment:
         extraction_note=extraction_note,
         created_at=datetime.now(timezone.utc),
     )
-    _metadata_path(file_id).write_text(
-        json.dumps(attachment.model_dump(mode="json"), ensure_ascii=True),
-        encoding="utf-8",
-    )
     return attachment
 
 
@@ -371,8 +384,66 @@ def load_attachment(file_id: str) -> StoredAttachment | None:
     return StoredAttachment.model_validate(payload)
 
 
+def from_db_attachment(attachment: Attachment) -> StoredAttachment:
+    return StoredAttachment(
+        id=str(attachment.id),
+        filename=attachment.filename,
+        content_type=attachment.content_type,
+        media_type=attachment.media_type,
+        size_bytes=attachment.size_bytes,
+        storage_path=attachment.storage_path,
+        preview_text=attachment.preview_text,
+        extraction_note=attachment.extraction_note,
+        created_at=attachment.created_at,
+    )
+
+
+async def load_attachments_for_ids(
+    session: AsyncSession,
+    attachment_ids: list[str],
+    *,
+    allow_json_fallback: bool = True,
+) -> list[StoredAttachment]:
+    if not attachment_ids:
+        return []
+
+    try:
+        uuid_ids = [UUID(item) for item in attachment_ids]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="One or more attachment IDs are invalid.") from exc
+
+    stmt = select(Attachment).where(Attachment.id.in_(uuid_ids))
+    rows = (await session.execute(stmt)).scalars().all()
+    db_by_id = {str(item.id): from_db_attachment(item) for item in rows}
+
+    loaded: list[StoredAttachment] = []
+    missing: list[str] = []
+    for file_id in attachment_ids:
+        item = db_by_id.get(file_id)
+        if item is not None:
+            loaded.append(item)
+            continue
+        if allow_json_fallback:
+            fallback = load_attachment(file_id)
+            if fallback is not None:
+                loaded.append(fallback)
+                continue
+        missing.append(file_id)
+
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Attachment(s) not found: {', '.join(missing)}.",
+        )
+    return loaded
+
+
 def _attachment_file_path(attachment: StoredAttachment) -> Path:
-    path = Path(attachment.storage_path)
+    return resolve_storage_path(attachment.storage_path)
+
+
+def resolve_storage_path(storage_path: str) -> Path:
+    path = Path(storage_path)
     if not path.is_absolute():
         project_root = Path(__file__).resolve().parents[2]
         path = project_root / path
@@ -459,6 +530,88 @@ def build_attachment_message_parts(attachment_ids: list[str]) -> tuple[str, list
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections), content_blocks
+
+
+def build_attachment_message_parts_for_items(
+    attachments: list[StoredAttachment],
+) -> tuple[str, list[dict[str, Any]]]:
+    sections: list[str] = []
+    content_blocks: list[dict[str, Any]] = []
+
+    for index, item in enumerate(attachments, start=1):
+        if item.media_type == "image":
+            content_blocks.append(
+                {
+                    "type": "image",
+                    "base64": _encode_attachment_base64(item),
+                    "mime_type": item.content_type,
+                }
+            )
+            sections.append(
+                "\n".join(
+                    [
+                        f"Attachment {index}",
+                        f"- id: {item.id}",
+                        f"- filename: {item.filename}",
+                        "- delivery: inline image block",
+                    ]
+                )
+            )
+            continue
+
+        if item.media_type == "pdf":
+            content_blocks.append(
+                {
+                    "type": "file",
+                    "base64": _encode_attachment_base64(item),
+                    "mime_type": "application/pdf",
+                    "filename": item.filename,
+                }
+            )
+            sections.append(
+                "\n".join(
+                    [
+                        f"Attachment {index}",
+                        f"- id: {item.id}",
+                        f"- filename: {item.filename}",
+                        "- delivery: inline pdf file block",
+                    ]
+                )
+            )
+            continue
+
+        lines = [
+            f"Attachment {index}",
+            f"- id: {item.id}",
+            f"- filename: {item.filename}",
+            f"- media_type: {item.media_type}",
+            f"- content_type: {item.content_type}",
+            f"- size_bytes: {item.size_bytes}",
+        ]
+        if item.preview_text:
+            lines.append("- extracted_content:")
+            lines.append(item.preview_text)
+        elif item.extraction_note:
+            lines.append(f"- extraction_note: {item.extraction_note}")
+        else:
+            lines.append("- extraction_note: No extracted text.")
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections), content_blocks
+
+
+async def build_attachment_message_parts_async(
+    session: AsyncSession,
+    attachment_ids: list[str],
+    *,
+    allow_json_fallback: bool = True,
+) -> tuple[str, list[dict[str, Any]]]:
+    items = await load_attachments_for_ids(
+        session,
+        attachment_ids,
+        allow_json_fallback=allow_json_fallback,
+    )
+    return build_attachment_message_parts_for_items(items)
 
 
 def build_attachment_prompt(attachment_ids: list[str]) -> str:
