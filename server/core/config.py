@@ -103,6 +103,46 @@ class Settings(BaseSettings):
         default=6,
         validation_alias="CONTEXT_KEEP_LAST_TURNS",
     )
+    tables_agent_write_enabled: bool = Field(
+        default=False,
+        validation_alias="TABLES_AGENT_WRITE_ENABLED",
+    )
+    tables_max_columns: int = Field(
+        default=150,
+        validation_alias="TABLES_MAX_COLUMNS",
+    )
+    tables_max_file_size_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        validation_alias="TABLES_MAX_FILE_SIZE_BYTES",
+    )
+    tables_max_import_rows: int = Field(
+        default=50_000,
+        validation_alias="TABLES_MAX_IMPORT_ROWS",
+    )
+    tables_max_query_rows: int = Field(
+        default=500,
+        validation_alias="TABLES_MAX_QUERY_ROWS",
+    )
+    tables_export_max_rows: int = Field(
+        default=5_000,
+        validation_alias="TABLES_EXPORT_MAX_ROWS",
+    )
+    tables_query_timeout_ms: int = Field(
+        default=8_000,
+        validation_alias="TABLES_QUERY_TIMEOUT_MS",
+    )
+    tables_max_filters: int = Field(
+        default=20,
+        validation_alias="TABLES_MAX_FILTERS",
+    )
+    tables_max_aggregates: int = Field(
+        default=10,
+        validation_alias="TABLES_MAX_AGGREGATES",
+    )
+    tables_max_cell_length: int = Field(
+        default=4_000,
+        validation_alias="TABLES_MAX_CELL_LENGTH",
+    )
 
     @computed_field
     @property

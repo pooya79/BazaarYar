@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain.tools import tool
 
 from server.agents.usage import extract_usage
+from server.agents.table_tools import TABLE_TOOLS
 
 SYSTEM_PROMPT = (
     "You are BazaarYar, an assistant that is concise, practical, and transparent. "
@@ -28,9 +29,9 @@ def reverse_text(text: str) -> str:
 
 @tool(description="Get the current UTC time in ISO-8601 format.")
 def utc_time() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat() + "Z"
 
-
+# TODO: for now remove TABLE_TOOLS, we will add them back later.
 TOOLS = [add_numbers, reverse_text, utc_time]
 
 

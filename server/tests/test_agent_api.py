@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -8,8 +9,8 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, ToolMessage
 
-import server.api.agents.router as agents_api
-import server.api.conversations.router as conversations_api
+agents_api = importlib.import_module("server.api.agents.router")
+conversations_api = importlib.import_module("server.api.conversations.router")
 from server.domain.chat_store import ConversationListEntry, ConversationNotFoundError
 from server.main import app
 

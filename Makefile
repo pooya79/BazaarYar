@@ -14,10 +14,10 @@ dev: db
 	$(MAKE) -j 2 server web
 
 server:
-	source server/.venv/bin/activate && python -m uvicorn server.main:app --reload
+	uv run --project server uvicorn server.main:app --reload
 
 test-server:
-	source server/.venv/bin/activate && python -m pytest server/tests
+	PYTHONPATH=. uv run --project server pytest server/tests
 
 web:
 	cd web && set -a && . ../.env && set +a && pnpm dev
