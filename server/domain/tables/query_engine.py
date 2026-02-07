@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, and_, asc, cast, desc, func
@@ -222,7 +222,7 @@ def compile_query(
         "sorts": [item.model_dump(mode="json") for item in query.sorts],
         "group_by": list(query.group_by),
         "aggregates": [item.model_dump(mode="json") for item in query.aggregates],
-        "compiled_at": datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat() + "Z",
+        "compiled_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat() + "Z",
     }
 
     return CompiledQuery(

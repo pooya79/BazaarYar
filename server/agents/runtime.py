@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from langchain.agents import create_agent
@@ -29,7 +29,7 @@ def reverse_text(text: str) -> str:
 
 @tool(description="Get the current UTC time in ISO-8601 format.")
 def utc_time() -> str:
-    return datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat() + "Z"
 
 # TODO: for now remove TABLE_TOOLS, we will add them back later.
 TOOLS = [add_numbers, reverse_text, utc_time]

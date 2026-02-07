@@ -1,4 +1,11 @@
-import { MinusCircle, MoreHorizontal, Plus, Power, Trash2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Download,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -6,120 +13,66 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { ReferenceTableSummary } from "@/lib/api/schemas/tables";
 import { cn } from "@/lib/utils";
-
-export type ReferenceTableStatus = "active" | "disabled";
-
-export type ReferenceTable = {
-  id: string;
-  name: string;
-  description: string;
-  rows: number;
-  columns: number;
-  source: string;
-  refresh: string;
-  updatedAt: string;
-  status: ReferenceTableStatus;
-  assignedAgents: string[];
-  tags: string[];
-};
-
-export type ReferenceTableAction = "toggle" | "remove" | "delete";
+import { formatDateTime } from "@/view/referenceTables/utils";
 
 type ReferenceTablesViewProps = {
-  tables: ReferenceTable[];
+  tables: ReferenceTableSummary[];
   tableMenuOpenId: string | null;
+  exportingTableId: string | null;
+  deletingTableId: string | null;
   onTableMenuOpenChange: (tableId: string | null) => void;
-  onAddTable: () => void;
-  onTableAction: (action: ReferenceTableAction, tableId: string) => void;
-};
-
-const tableStatusLabels: Record<ReferenceTableStatus, string> = {
-  active: "Active",
-  disabled: "Disabled",
-};
-
-const tableStatusClasses: Record<ReferenceTableStatus, string> = {
-  active: "bg-marketing-status-active text-marketing-on-primary",
-  disabled: "bg-marketing-border text-marketing-text-muted",
+  onCreateTable: () => void;
+  onOpenTable: (tableId: string) => void;
+  onEditTable: (table: ReferenceTableSummary) => void;
+  onDeleteTable: (table: ReferenceTableSummary) => void;
+  onExportTable: (table: ReferenceTableSummary) => void;
 };
 
 const tableMenuItemClass = "cursor-pointer rounded-lg px-2.5 py-2";
 
-export const initialReferenceTables: ReferenceTable[] = [
-  {
-    id: "product-faq",
-    name: "Product FAQ",
-    description:
-      "Approved answers for feature, pricing, and roadmap questions.",
-    rows: 128,
-    columns: 12,
-    source: "Notion sync",
-    refresh: "Hourly",
-    updatedAt: "Jan 30, 2026",
-    status: "active",
-    assignedAgents: ["Support Copilot", "Website Concierge"],
-    tags: ["faq", "approved", "public"],
-  },
-  {
-    id: "pricing-rules",
-    name: "Pricing Rules",
-    description:
-      "Tier logic, discounts, and eligibility guardrails for sales outreach.",
-    rows: 36,
-    columns: 9,
-    source: "Salesforce",
-    refresh: "Daily",
-    updatedAt: "Jan 28, 2026",
-    status: "active",
-    assignedAgents: ["Sales Agent"],
-    tags: ["pricing", "legal", "sales"],
-  },
-  {
-    id: "compliance-claims",
-    name: "Compliance Claims",
-    description:
-      "Allowed claims, disclaimers, and regulated phrasing for campaigns.",
-    rows: 52,
-    columns: 7,
-    source: "Manual review",
-    refresh: "On demand",
-    updatedAt: "Jan 14, 2026",
-    status: "disabled",
-    assignedAgents: [],
-    tags: ["compliance", "risk", "regulated"],
-  },
-];
-
 export function ReferenceTablesView({
   tables,
   tableMenuOpenId,
+  exportingTableId,
+  deletingTableId,
   onTableMenuOpenChange,
-  onAddTable,
-  onTableAction,
+  onCreateTable,
+  onOpenTable,
+  onEditTable,
+  onDeleteTable,
+  onExportTable,
 }: ReferenceTablesViewProps) {
-  const activeTables = tables.filter(
-    (table) => table.status === "active",
-  ).length;
-  const assignedTables = tables.filter(
-    (table) => table.assignedAgents.length > 0,
-  ).length;
+  const totalRows = tables.reduce((sum, table) => sum + table.row_count, 0);
+  const latestUpdatedAt = tables
+    .map((table) => new Date(table.updated_at).getTime())
+    .filter((value) => Number.isFinite(value))
+    .reduce<number | null>((latest, value) => {
+      if (latest === null || value > latest) {
+        return value;
+      }
+      return latest;
+    }, null);
 
   const summaryCards = [
     {
       label: "Total tables",
-      value: tables.length,
-      helper: "Canonical sources",
+      value: tables.length.toLocaleString(),
+      helper: "Reference datasets",
     },
     {
-      label: "Active",
-      value: activeTables,
-      helper: "Available to agents",
+      label: "Total rows",
+      value: totalRows.toLocaleString(),
+      helper: "Queryable records",
     },
     {
-      label: "Assigned",
-      value: assignedTables,
-      helper: "Mapped to workflows",
+      label: "Last update",
+      value:
+        latestUpdatedAt === null
+          ? "-"
+          : formatDateTime(new Date(latestUpdatedAt).toISOString()),
+      helper: "Most recently updated table",
     },
   ];
 
@@ -131,9 +84,10 @@ export function ReferenceTablesView({
             <h2 className="text-2xl font-semibold text-marketing-text-primary">
               Reference Tables
             </h2>
-            <p className="max-w-2xl text-sm text-marketing-text-secondary">
-              Build trusted tables that agents can consult for approved facts,
-              pricing rules, and compliance-safe language.
+            <p className="max-w-3xl text-sm text-marketing-text-secondary">
+              Build trusted tables for campaign analytics and consistent
+              decision support. Agent access will be enabled when table tools
+              are active in runtime.
             </p>
           </div>
           <Button
@@ -143,10 +97,10 @@ export function ReferenceTablesView({
               "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to",
               "hover:-translate-y-0.5 hover:shadow-marketing-hover",
             )}
-            onClick={onAddTable}
+            onClick={onCreateTable}
           >
             <Plus className="size-4" aria-hidden="true" />
-            Add table
+            Create table
           </Button>
         </div>
 
@@ -160,7 +114,7 @@ export function ReferenceTablesView({
                 {card.label}
               </div>
               <div className="mt-2 text-2xl font-semibold text-marketing-text-primary">
-                {card.value.toLocaleString()}
+                {card.value}
               </div>
               <div className="mt-1 text-xs text-marketing-text-secondary">
                 {card.helper}
@@ -169,13 +123,18 @@ export function ReferenceTablesView({
           ))}
         </div>
 
+        <div className="rounded-2xl border border-marketing-border bg-marketing-accent-soft px-4 py-3 text-sm text-marketing-text-secondary">
+          Agent access available when table tools are enabled.
+        </div>
+
         {tables.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-marketing-border bg-marketing-surface p-10 text-center shadow-marketing-subtle">
             <h3 className="text-lg font-semibold text-marketing-text-primary">
               No reference tables yet
             </h3>
             <p className="mt-2 text-sm text-marketing-text-secondary">
-              Add your first table to give agents a trusted source of truth.
+              Create your first table to start querying structured campaign
+              data.
             </p>
             <Button
               type="button"
@@ -183,10 +142,10 @@ export function ReferenceTablesView({
                 "mt-6 h-10 rounded-xl px-4 text-sm font-semibold text-marketing-on-primary",
                 "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to",
               )}
-              onClick={onAddTable}
+              onClick={onCreateTable}
             >
               <Plus className="size-4" aria-hidden="true" />
-              Add your first table
+              Create first table
             </Button>
           </div>
         ) : (
@@ -194,30 +153,19 @@ export function ReferenceTablesView({
             {tables.map((table) => (
               <div
                 key={table.id}
-                className={cn(
-                  "rounded-2xl border border-marketing-border bg-marketing-surface p-5 shadow-marketing-subtle transition-all duration-200",
-                  table.status === "disabled"
-                    ? "opacity-70"
-                    : "hover:-translate-y-1 hover:border-marketing-secondary hover:shadow-marketing-soft",
-                )}
+                className="rounded-2xl border border-marketing-border bg-marketing-surface p-5 shadow-marketing-subtle transition-all duration-200 hover:-translate-y-1 hover:border-marketing-secondary hover:shadow-marketing-soft"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-semibold text-marketing-text-primary">
-                        {table.name}
-                      </h3>
-                      <span
-                        className={cn(
-                          "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.5px]",
-                          tableStatusClasses[table.status],
-                        )}
-                      >
-                        {tableStatusLabels[table.status]}
-                      </span>
-                    </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-lg font-semibold text-marketing-text-primary">
+                      {table.title?.trim() || table.name}
+                    </h3>
+                    <p className="mt-1 break-all text-xs font-semibold uppercase tracking-[1.2px] text-marketing-text-muted">
+                      {table.name}
+                    </p>
                     <p className="mt-2 text-sm text-marketing-text-secondary">
-                      {table.description}
+                      {table.description?.trim() ||
+                        "No description provided for this table."}
                     </p>
                   </div>
 
@@ -240,30 +188,42 @@ export function ReferenceTablesView({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       sideOffset={8}
-                      className="min-w-[160px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
+                      className="min-w-[180px] rounded-[10px] border-marketing-border bg-marketing-surface p-1.5 text-marketing-text-primary shadow-marketing-soft"
                     >
                       <DropdownMenuItem
                         className={cn(
                           tableMenuItemClass,
                           "focus:bg-marketing-accent-soft focus:text-marketing-primary",
                         )}
-                        onSelect={() => onTableAction("toggle", table.id)}
+                        onSelect={() => onOpenTable(table.id)}
                       >
-                        <Power className="size-4 text-marketing-text-primary" />
-                        <span>
-                          {table.status === "active" ? "Disable" : "Enable"}
-                        </span>
+                        <ArrowUpRight className="size-4 text-marketing-text-primary" />
+                        <span>Open table</span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className={cn(
                           tableMenuItemClass,
                           "focus:bg-marketing-accent-soft focus:text-marketing-primary",
                         )}
-                        onSelect={() => onTableAction("remove", table.id)}
-                        disabled={table.assignedAgents.length === 0}
+                        onSelect={() => onEditTable(table)}
                       >
-                        <MinusCircle className="size-4 text-marketing-text-primary" />
-                        <span>Remove from agents</span>
+                        <Pencil className="size-4 text-marketing-text-primary" />
+                        <span>Edit metadata</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className={cn(
+                          tableMenuItemClass,
+                          "focus:bg-marketing-accent-soft focus:text-marketing-primary",
+                        )}
+                        onSelect={() => onExportTable(table)}
+                        disabled={exportingTableId === table.id}
+                      >
+                        <Download className="size-4 text-marketing-text-primary" />
+                        <span>
+                          {exportingTableId === table.id
+                            ? "Exporting..."
+                            : "Export CSV"}
+                        </span>
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
@@ -271,10 +231,15 @@ export function ReferenceTablesView({
                           tableMenuItemClass,
                           "focus:bg-marketing-danger-soft focus:text-marketing-danger",
                         )}
-                        onSelect={() => onTableAction("delete", table.id)}
+                        onSelect={() => onDeleteTable(table)}
+                        disabled={deletingTableId === table.id}
                       >
                         <Trash2 className="size-4 text-marketing-danger" />
-                        <span>Delete</span>
+                        <span>
+                          {deletingTableId === table.id
+                            ? "Deleting..."
+                            : "Delete table"}
+                        </span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -282,10 +247,22 @@ export function ReferenceTablesView({
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {[
-                    { label: "Rows", value: table.rows.toLocaleString() },
-                    { label: "Columns", value: table.columns.toString() },
-                    { label: "Source", value: table.source },
-                    { label: "Updated", value: table.updatedAt },
+                    {
+                      label: "Rows",
+                      value: table.row_count.toLocaleString(),
+                    },
+                    {
+                      label: "Created",
+                      value: formatDateTime(table.created_at),
+                    },
+                    {
+                      label: "Updated",
+                      value: formatDateTime(table.updated_at),
+                    },
+                    {
+                      label: "Table ID",
+                      value: table.id,
+                    },
                   ].map((item) => (
                     <div
                       key={`${table.id}-${item.label}`}
@@ -294,52 +271,24 @@ export function ReferenceTablesView({
                       <div className="text-xs uppercase tracking-[1px] text-marketing-text-muted">
                         {item.label}
                       </div>
-                      <div className="text-sm font-semibold text-marketing-text-primary">
+                      <div className="truncate text-sm font-semibold text-marketing-text-primary">
                         {item.value}
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-4 text-xs font-semibold uppercase tracking-[1.2px] text-marketing-text-muted">
-                  Used by agents
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-lg border-marketing-border bg-marketing-surface text-marketing-text-primary hover:bg-marketing-accent-soft"
+                    onClick={() => onOpenTable(table.id)}
+                  >
+                    Open table
+                    <ArrowUpRight className="size-4" aria-hidden="true" />
+                  </Button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {table.assignedAgents.length > 0 ? (
-                    table.assignedAgents.map((agent) => (
-                      <span
-                        key={`${table.id}-${agent}`}
-                        className="rounded-full border border-marketing-border bg-marketing-surface px-3 py-1 text-xs font-semibold text-marketing-text-secondary"
-                      >
-                        {agent}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="rounded-full border border-marketing-border bg-marketing-accent-soft px-3 py-1 text-xs font-semibold text-marketing-text-muted">
-                      Unassigned
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                  {table.tags.map((tag) => (
-                    <span
-                      key={`${table.id}-${tag}`}
-                      className="rounded-full border border-marketing-border bg-marketing-accent-medium px-2.5 py-1 font-semibold text-marketing-primary"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  <span className="rounded-full border border-marketing-border bg-marketing-surface px-2.5 py-1 font-semibold text-marketing-text-secondary">
-                    Refresh: {table.refresh}
-                  </span>
-                </div>
-
-                {table.status === "disabled" && (
-                  <div className="mt-4 rounded-xl border border-marketing-border bg-marketing-accent-soft px-3 py-2 text-xs text-marketing-text-secondary">
-                    Disabled tables are skipped by agents until re-enabled.
-                  </div>
-                )}
               </div>
             ))}
           </div>
