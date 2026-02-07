@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { uploadAgentAttachments } from "@/lib/api/clients/agent.client";
 import type { PendingAttachment } from "./ChatInput";
 import type { MessageAttachment } from "./types";
@@ -52,7 +52,7 @@ export function useComposerAttachments() {
     ComposerAttachment[]
   >([]);
 
-  const handlePickFiles = async (files: FileList) => {
+  const handlePickFiles = useCallback(async (files: FileList) => {
     const fileList = Array.from(files);
     for (const file of fileList) {
       const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -105,9 +105,9 @@ export function useComposerAttachments() {
         );
       }
     }
-  };
+  }, []);
 
-  const handleRemoveAttachment = (attachmentId: string) => {
+  const handleRemoveAttachment = useCallback((attachmentId: string) => {
     setPendingAttachments((prev) => {
       const current = prev.find((item) => item.id === attachmentId);
       if (current?.localPreviewUrl) {
@@ -115,9 +115,9 @@ export function useComposerAttachments() {
       }
       return prev.filter((item) => item.id !== attachmentId);
     });
-  };
+  }, []);
 
-  const clearPendingAttachments = () => {
+  const clearPendingAttachments = useCallback(() => {
     setPendingAttachments((prev) => {
       for (const attachment of prev) {
         if (attachment.localPreviewUrl) {
@@ -126,7 +126,7 @@ export function useComposerAttachments() {
       }
       return [];
     });
-  };
+  }, []);
 
   return {
     pendingAttachments,

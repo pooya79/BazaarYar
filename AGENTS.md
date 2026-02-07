@@ -49,7 +49,7 @@ The agent platform is designed to support:
 - `web/src/view/`: Page-level composed views built from components and data hooks.
 
 ### Core Frameworks/Libraries
-- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, lucide-react, class-variance-authority, clsx, tailwind-merge.
+- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, lucide-react, class-variance-authority, clsx, tailwind-merge, zustand.
 - Tooling (frontend): Biome (lint/format), pnpm.
 - Backend: FastAPI, Uvicorn, SQLAlchemy, Alembic, Pydantic Settings, psycopg, LangChain.
 - Tooling (backend): uv (dependency sync), Python >= 3.13.

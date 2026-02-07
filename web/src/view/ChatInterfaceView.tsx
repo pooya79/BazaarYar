@@ -2,37 +2,24 @@
 
 import { useParams, useRouter } from "next/navigation";
 import type { KeyboardEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatEmptyState } from "@/components/chat-interface/ChatEmptyState";
-import { ChatHeader } from "@/components/chat-interface/ChatHeader";
 import { ChatInput } from "@/components/chat-interface/ChatInput";
 import { ChatMessages } from "@/components/chat-interface/ChatMessages";
 import {
   brandVoices,
-  library,
   quickActions,
-  tools,
 } from "@/components/chat-interface/constants";
-import type {
-  ChatAction,
-  ChatItem,
-  Message,
-} from "@/components/chat-interface/types";
+import type { Message } from "@/components/chat-interface/types";
 import {
   isReadyComposerAttachment,
   toMessageAttachment,
   useComposerAttachments,
 } from "@/components/chat-interface/useComposerAttachments";
-import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
 import {
-  deleteAgentConversation,
   getAgentConversation,
-  listAgentConversations,
-  renameAgentConversation,
-  starAgentConversation,
   streamAgent,
 } from "@/lib/api/clients/agent.client";
-import { cn } from "@/lib/utils";
 import {
   formatMetaBlock,
   formatTime,
@@ -40,16 +27,7 @@ import {
   formatToolDelta,
   formatToolResult,
   mapConversationKind,
-  summarizeConversationMeta,
 } from "@/view/chatViewUtils";
-import type {
-  ReferenceTable,
-  ReferenceTableAction,
-} from "@/view/ReferenceTablesView";
-import {
-  initialReferenceTables,
-  ReferenceTablesView,
-} from "@/view/ReferenceTablesView";
 
 export function ChatInterfaceView() {
   const router = useRouter();
@@ -57,16 +35,7 @@ export function ChatInterfaceView() {
   const routeConversationId =
     typeof params?.conversationId === "string" ? params.conversationId : null;
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [chatsOpen, setChatsOpen] = useState(false);
-  const [activeTool, setActiveTool] = useState("assistant");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [chatItems, setChatItems] = useState<ChatItem[]>([]);
-  const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
-  const [referenceTables, setReferenceTables] = useState<ReferenceTable[]>(
-    initialReferenceTables,
-  );
-  const [tableMenuOpenId, setTableMenuOpenId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [messageInput, setMessageInput] = useState("");
@@ -81,7 +50,6 @@ export function ChatInterfaceView() {
   const messageId = useRef(0);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const referenceTableCounter = useRef(1);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamStateRef = useRef({
     textId: null as number | null,
@@ -93,15 +61,6 @@ export function ChatInterfaceView() {
   });
   const hasStreamedRef = useRef(false);
 
-  const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
-    const allItems = [...tools, ...library];
-    const match = allItems.find((item) => item.id === activeTool) ?? tools[0];
-    return {
-      pageTitle: match.label,
-      pageIcon: match.icon,
-    };
-  }, [activeTool]);
-
   useEffect(() => {
     if (!chatWrapperRef.current) return;
     if (messages.length === 0 && !isTyping) return;
@@ -109,34 +68,10 @@ export function ChatInterfaceView() {
   }, [messages.length, isTyping]);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
     return () => {
       streamAbortRef.current?.abort();
     };
   }, []);
-
-  const refreshConversations = async () => {
-    const conversations = await listAgentConversations();
-    setChatItems(
-      conversations.map((conversation) => ({
-        id: conversation.id,
-        title: conversation.title?.trim() || "Untitled conversation",
-        meta: summarizeConversationMeta(conversation),
-        status: "active",
-        starred: conversation.starred,
-      })),
-    );
-  };
 
   const loadConversation = useCallback(async (conversationId: string) => {
     const conversation = await getAgentConversation(conversationId);
@@ -177,50 +112,17 @@ export function ChatInterfaceView() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const conversations = await listAgentConversations();
-        if (cancelled) {
-          return;
-        }
-        setChatItems(
-          conversations.map((conversation) => ({
-            id: conversation.id,
-            title: conversation.title?.trim() || "Untitled conversation",
-            meta: summarizeConversationMeta(conversation),
-            status: "active",
-            starred: conversation.starred,
-          })),
-        );
-      } catch {
-        if (cancelled) {
-          return;
-        }
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: messageId.current++,
-            sender: "bot",
-            text: "Failed to load saved conversations.",
-            time: formatTime(new Date()),
-            kind: "meta",
-          },
-        ]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
     streamAbortRef.current?.abort();
     setIsTyping(false);
 
     if (!routeConversationId) {
       setActiveChatId(null);
       setMessages([]);
+      setMessageInput("");
+      clearPendingAttachments();
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
       return () => {
         cancelled = true;
       };
@@ -253,7 +155,7 @@ export function ChatInterfaceView() {
     return () => {
       cancelled = true;
     };
-  }, [routeConversationId, loadConversation]);
+  }, [routeConversationId, loadConversation, clearPendingAttachments]);
 
   const addMessage = (
     text: string,
@@ -290,14 +192,34 @@ export function ChatInterfaceView() {
     );
   };
 
-  const resetStreamState = () => {
+  const resetStreamState = useCallback(() => {
     streamStateRef.current = {
       textId: null,
       reasoningId: null,
       toolDelta: new Map(),
     };
     hasStreamedRef.current = false;
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleReset = () => {
+      streamAbortRef.current?.abort();
+      resetStreamState();
+      setIsTyping(false);
+      setActiveChatId(null);
+      setMessages([]);
+      setMessageInput("");
+      clearPendingAttachments();
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    };
+
+    window.addEventListener("agent-chat:reset", handleReset);
+    return () => {
+      window.removeEventListener("agent-chat:reset", handleReset);
+    };
+  }, [clearPendingAttachments, resetStreamState]);
 
   const ensureStreamMessage = (
     key: "textId" | "reasoningId",
@@ -457,7 +379,7 @@ export function ChatInterfaceView() {
             if (metadataText) {
               addMessage(metadataText, "bot", "meta");
             }
-            void refreshConversations();
+            window.dispatchEvent(new Event("agent-conversations:refresh"));
             setIsTyping(false);
             return;
           }
@@ -482,174 +404,8 @@ export function ChatInterfaceView() {
     }
   };
 
-  const handleToolClick = (toolId: string) => {
-    setActiveTool(toolId);
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
-  };
-
-  const handleChatSelect = (chatId: string) => {
-    setChatMenuOpenId(null);
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
-    router.push(`/c/${chatId}`);
-  };
-
-  const handleNewChat = () => {
-    streamAbortRef.current?.abort();
-    setIsTyping(false);
-    setMessages([]);
-    setMessageInput("");
-    setActiveChatId(null);
-    setChatMenuOpenId(null);
-    setActiveTool("assistant");
-    clearPendingAttachments();
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-    router.push("/");
-  };
-
-  const handleChatAction = (action: ChatAction, chatId: string) => {
-    if (action === "use") {
-      void handleChatSelect(chatId);
-      setChatMenuOpenId(null);
-      return;
-    }
-
-    if (action === "rename") {
-      const current = chatItems.find((item) => item.id === chatId);
-      if (!current) return;
-      const nextTitle = window.prompt("Rename chat", current.title);
-      if (!nextTitle || !nextTitle.trim()) return;
-      const normalizedTitle = nextTitle.trim();
-      void (async () => {
-        try {
-          await renameAgentConversation(chatId, normalizedTitle);
-          await refreshConversations();
-        } catch (error) {
-          addMessage(
-            error instanceof Error
-              ? `Failed to rename conversation: ${error.message}`
-              : "Failed to rename conversation.",
-            "bot",
-            "meta",
-          );
-        } finally {
-          setChatMenuOpenId(null);
-        }
-      })();
-      return;
-    }
-
-    if (action === "delete") {
-      void (async () => {
-        try {
-          await deleteAgentConversation(chatId);
-          setChatItems((prev) => prev.filter((item) => item.id !== chatId));
-          if (activeChatId === chatId) {
-            setActiveChatId(null);
-            setMessages([]);
-            clearPendingAttachments();
-            router.push("/");
-          }
-        } catch (error) {
-          addMessage(
-            error instanceof Error
-              ? `Failed to delete conversation: ${error.message}`
-              : "Failed to delete conversation.",
-            "bot",
-            "meta",
-          );
-        } finally {
-          setChatMenuOpenId(null);
-        }
-      })();
-      return;
-    }
-
-    if (action === "star") {
-      const current = chatItems.find((item) => item.id === chatId);
-      if (!current) return;
-      const nextStarred = !current.starred;
-      void (async () => {
-        try {
-          await starAgentConversation(chatId, nextStarred);
-          await refreshConversations();
-        } catch (error) {
-          addMessage(
-            error instanceof Error
-              ? `Failed to update star status: ${error.message}`
-              : "Failed to update star status.",
-            "bot",
-            "meta",
-          );
-        } finally {
-          setChatMenuOpenId(null);
-        }
-      })();
-    }
-  };
-
   const handleQuickAction = (prompt: string) => {
     handleSend(prompt);
-  };
-
-  const handleAddReferenceTable = () => {
-    const nextIndex = referenceTableCounter.current++;
-    const nextTable: ReferenceTable = {
-      id: `reference-${Date.now()}-${nextIndex}`,
-      name: `Reference Table ${nextIndex}`,
-      description: "Define approved values agents should rely on.",
-      rows: 0,
-      columns: 4,
-      source: "Manual entry",
-      refresh: "On demand",
-      updatedAt: "Just now",
-      status: "active",
-      assignedAgents: [],
-      tags: ["draft"],
-    };
-    setReferenceTables((prev) => [nextTable, ...prev]);
-  };
-
-  const handleReferenceTableAction = (
-    action: ReferenceTableAction,
-    tableId: string,
-  ) => {
-    if (action === "toggle") {
-      setReferenceTables((prev) =>
-        prev.map((table) =>
-          table.id === tableId
-            ? {
-                ...table,
-                status: table.status === "active" ? "disabled" : "active",
-              }
-            : table,
-        ),
-      );
-      setTableMenuOpenId(null);
-      return;
-    }
-
-    if (action === "remove") {
-      setReferenceTables((prev) =>
-        prev.map((table) =>
-          table.id === tableId ? { ...table, assignedAgents: [] } : table,
-        ),
-      );
-      setTableMenuOpenId(null);
-      return;
-    }
-
-    if (action === "delete") {
-      setReferenceTables((prev) =>
-        prev.filter((table) => table.id !== tableId),
-      );
-      setTableMenuOpenId(null);
-    }
   };
 
   const handleInputChange = (value: string) => {
@@ -671,7 +427,6 @@ export function ChatInterfaceView() {
     setBrandVoiceIndex((prev) => (prev + 1) % brandVoices.length);
   };
 
-  const isReferenceTables = activeTool === "reference-tables";
   const hasMessages = messages.length > 0;
   const hasReadyAttachment = pendingAttachments.some(
     (item) => item.status === "ready",
@@ -684,82 +439,31 @@ export function ChatInterfaceView() {
     !hasUploadingAttachment;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
-      <button
-        type="button"
-        aria-label="Close sidebar"
-        className={cn(
-          "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
-          sidebarOpen ? "block" : "hidden",
-        )}
-        onClick={() => setSidebarOpen(false)}
-      />
-
-      <ChatSidebar
-        isOpen={sidebarOpen}
-        chatsOpen={chatsOpen}
-        onToggleChats={() => setChatsOpen((prev) => !prev)}
-        onNewChat={handleNewChat}
-        chatItems={chatItems}
-        activeChatId={activeChatId}
-        onChatSelect={handleChatSelect}
-        onChatAction={handleChatAction}
-        chatMenuOpenId={chatMenuOpenId}
-        onChatMenuOpenChange={setChatMenuOpenId}
-        tools={tools}
-        library={library}
-        activeTool={activeTool}
-        onToolSelect={handleToolClick}
-      />
-
-      <main className="relative flex flex-1 flex-col overflow-hidden bg-marketing-bg">
-        <ChatHeader
-          pageTitle={pageTitle}
-          PageIcon={PageIcon}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-        />
-
-        {isReferenceTables ? (
-          <ReferenceTablesView
-            tables={referenceTables}
-            tableMenuOpenId={tableMenuOpenId}
-            onTableMenuOpenChange={setTableMenuOpenId}
-            onAddTable={handleAddReferenceTable}
-            onTableAction={handleReferenceTableAction}
-          />
+    <>
+      <div
+        className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8"
+        ref={chatWrapperRef}
+      >
+        {!hasMessages ? (
+          <ChatEmptyState actions={quickActions} onAction={handleQuickAction} />
         ) : (
-          <>
-            <div
-              className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8"
-              ref={chatWrapperRef}
-            >
-              {!hasMessages ? (
-                <ChatEmptyState
-                  actions={quickActions}
-                  onAction={handleQuickAction}
-                />
-              ) : (
-                <ChatMessages messages={messages} isTyping={isTyping} />
-              )}
-            </div>
-
-            <ChatInput
-              textareaRef={textareaRef}
-              value={messageInput}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onSend={handleSend}
-              canSend={canSend}
-              attachments={pendingAttachments}
-              onPickFiles={handlePickFiles}
-              onRemoveAttachment={handleRemoveAttachment}
-              brandVoice={brandVoices[brandVoiceIndex]}
-              onToggleBrandVoice={toggleBrandVoice}
-            />
-          </>
+          <ChatMessages messages={messages} isTyping={isTyping} />
         )}
-      </main>
-    </div>
+      </div>
+
+      <ChatInput
+        textareaRef={textareaRef}
+        value={messageInput}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onSend={handleSend}
+        canSend={canSend}
+        attachments={pendingAttachments}
+        onPickFiles={handlePickFiles}
+        onRemoveAttachment={handleRemoveAttachment}
+        brandVoice={brandVoices[brandVoiceIndex]}
+        onToggleBrandVoice={toggleBrandVoice}
+      />
+    </>
   );
 }
