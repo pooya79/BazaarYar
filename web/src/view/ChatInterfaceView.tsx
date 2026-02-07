@@ -25,8 +25,11 @@ import {
 } from "@/components/chat-interface/useComposerAttachments";
 import { ChatSidebar } from "@/components/sidebar/ChatSidebar";
 import {
+  deleteAgentConversation,
   getAgentConversation,
   listAgentConversations,
+  renameAgentConversation,
+  starAgentConversation,
   streamAgent,
 } from "@/lib/api/clients/agent.client";
 import { cn } from "@/lib/utils";
@@ -130,7 +133,7 @@ export function ChatInterfaceView() {
         title: conversation.title?.trim() || "Untitled conversation",
         meta: summarizeConversationMeta(conversation),
         status: "active",
-        starred: false,
+        starred: conversation.starred,
       })),
     );
   };
@@ -186,7 +189,7 @@ export function ChatInterfaceView() {
             title: conversation.title?.trim() || "Untitled conversation",
             meta: summarizeConversationMeta(conversation),
             status: "active",
-            starred: false,
+            starred: conversation.starred,
           })),
         );
       } catch {
@@ -521,34 +524,72 @@ export function ChatInterfaceView() {
       if (!current) return;
       const nextTitle = window.prompt("Rename chat", current.title);
       if (!nextTitle || !nextTitle.trim()) return;
-      setChatItems((prev) =>
-        prev.map((item) =>
-          item.id === chatId ? { ...item, title: nextTitle.trim() } : item,
-        ),
-      );
-      setChatMenuOpenId(null);
+      const normalizedTitle = nextTitle.trim();
+      void (async () => {
+        try {
+          await renameAgentConversation(chatId, normalizedTitle);
+          await refreshConversations();
+        } catch (error) {
+          addMessage(
+            error instanceof Error
+              ? `Failed to rename conversation: ${error.message}`
+              : "Failed to rename conversation.",
+            "bot",
+            "meta",
+          );
+        } finally {
+          setChatMenuOpenId(null);
+        }
+      })();
       return;
     }
 
     if (action === "delete") {
-      setChatItems((prev) => prev.filter((item) => item.id !== chatId));
-      setChatMenuOpenId(null);
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-        setMessages([]);
-        clearPendingAttachments();
-        router.push("/");
-      }
+      void (async () => {
+        try {
+          await deleteAgentConversation(chatId);
+          setChatItems((prev) => prev.filter((item) => item.id !== chatId));
+          if (activeChatId === chatId) {
+            setActiveChatId(null);
+            setMessages([]);
+            clearPendingAttachments();
+            router.push("/");
+          }
+        } catch (error) {
+          addMessage(
+            error instanceof Error
+              ? `Failed to delete conversation: ${error.message}`
+              : "Failed to delete conversation.",
+            "bot",
+            "meta",
+          );
+        } finally {
+          setChatMenuOpenId(null);
+        }
+      })();
       return;
     }
 
     if (action === "star") {
-      setChatItems((prev) =>
-        prev.map((item) =>
-          item.id === chatId ? { ...item, starred: !item.starred } : item,
-        ),
-      );
-      setChatMenuOpenId(null);
+      const current = chatItems.find((item) => item.id === chatId);
+      if (!current) return;
+      const nextStarred = !current.starred;
+      void (async () => {
+        try {
+          await starAgentConversation(chatId, nextStarred);
+          await refreshConversations();
+        } catch (error) {
+          addMessage(
+            error instanceof Error
+              ? `Failed to update star status: ${error.message}`
+              : "Failed to update star status.",
+            "bot",
+            "meta",
+          );
+        } finally {
+          setChatMenuOpenId(null);
+        }
+      })();
     }
   };
 

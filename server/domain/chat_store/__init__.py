@@ -14,11 +14,15 @@ from .errors import AttachmentNotFoundError, ConversationNotFoundError
 from .repository import (
     backfill_attachments_from_legacy_json,
     create_conversation,
+    delete_conversation,
+    get_conversation_summary,
     get_conversation_messages,
     list_conversations,
+    rename_conversation,
     save_assistant_message,
     save_uploaded_attachments,
     save_user_message_with_attachments,
+    set_conversation_starred,
     to_uuid,
 )
 from .selection import model_relevant_messages, pick_messages_for_budget
@@ -116,11 +120,15 @@ __all__ = [
     "backfill_attachments_from_legacy_json",
     "build_context_window_for_model",
     "create_conversation",
+    "delete_conversation",
     "estimate_tokens",
+    "get_conversation_summary",
     "get_conversation_messages",
     "list_conversations",
+    "rename_conversation",
     "save_assistant_message",
     "save_uploaded_attachments",
     "save_user_message_with_attachments",
+    "set_conversation_starred",
     "summarize_and_archive_old_messages",
 ]

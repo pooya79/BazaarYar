@@ -9,6 +9,7 @@ from uuid import UUID
 class ConversationListEntry:
     id: UUID
     title: str | None
+    starred: bool
     created_at: datetime
     updated_at: datetime
     message_count: int

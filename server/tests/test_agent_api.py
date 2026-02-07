@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 import server.api.agents.router as agents_api
 import server.api.conversations.router as conversations_api
-from server.domain.chat_store import ConversationListEntry
+from server.domain.chat_store import ConversationListEntry, ConversationNotFoundError
 from server.main import app
 
 
@@ -86,6 +86,7 @@ class _MemoryStore:
         conversation = SimpleNamespace(
             id=conversation_id,
             title=title,
+            starred=False,
             created_at=now,
             updated_at=now,
         )
@@ -194,7 +195,7 @@ class _MemoryStore:
     async def list_conversations(self, _session, *, limit=100):
         items = sorted(
             self.conversations.values(),
-            key=lambda item: item.updated_at,
+            key=lambda item: (item.starred, item.updated_at),
             reverse=True,
         )[:limit]
         output = []
@@ -205,6 +206,7 @@ class _MemoryStore:
                 ConversationListEntry(
                     id=conversation.id,
                     title=conversation.title,
+                    starred=conversation.starred,
                     created_at=conversation.created_at,
                     updated_at=conversation.updated_at,
                     message_count=len(conversation_messages),
@@ -214,6 +216,43 @@ class _MemoryStore:
                 )
             )
         return output
+
+    async def get_conversation_summary(self, _session, *, conversation_id):
+        conversation = self.conversations.get(str(conversation_id))
+        if conversation is None:
+            raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
+        messages = self.messages.get(str(conversation.id), [])
+        return ConversationListEntry(
+            id=conversation.id,
+            title=conversation.title,
+            starred=conversation.starred,
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+            message_count=len(messages),
+            last_message_at=messages[-1].created_at if messages else None,
+        )
+
+    async def rename_conversation(self, _session, *, conversation_id, title):
+        conversation = self.conversations.get(str(conversation_id))
+        if conversation is None:
+            raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
+        conversation.title = title
+        conversation.updated_at = datetime.now(timezone.utc)
+        return conversation
+
+    async def set_conversation_starred(self, _session, *, conversation_id, starred):
+        conversation = self.conversations.get(str(conversation_id))
+        if conversation is None:
+            raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
+        conversation.starred = starred
+        conversation.updated_at = datetime.now(timezone.utc)
+        return conversation
+
+    async def delete_conversation(self, _session, *, conversation_id):
+        if str(conversation_id) not in self.conversations:
+            raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
+        self.conversations.pop(str(conversation_id), None)
+        self.messages.pop(str(conversation_id), None)
 
     async def get_conversation_messages(self, _session, conversation_id, *, include_archived=True):
         conversation_messages = list(self.messages.get(str(conversation_id), []))
@@ -262,7 +301,11 @@ def _patch_memory_store(monkeypatch):
     monkeypatch.setattr(agents_api, "save_assistant_message", store.save_assistant_message)
     monkeypatch.setattr(agents_api, "build_context_window_for_model", store.build_context_window_for_model)
     monkeypatch.setattr(conversations_api, "list_conversations", store.list_conversations)
+    monkeypatch.setattr(conversations_api, "get_conversation_summary", store.get_conversation_summary)
     monkeypatch.setattr(conversations_api, "get_conversation_messages", store.get_conversation_messages)
+    monkeypatch.setattr(conversations_api, "rename_conversation", store.rename_conversation)
+    monkeypatch.setattr(conversations_api, "set_conversation_starred", store.set_conversation_starred)
+    monkeypatch.setattr(conversations_api, "delete_conversation", store.delete_conversation)
     monkeypatch.setattr(
         conversations_api,
         "build_context_window_for_model",
@@ -424,6 +467,43 @@ def test_list_conversations_endpoint(monkeypatch):
     payload = response.json()
     assert len(payload) >= 1
     assert payload[0]["id"] in store.conversations
+    assert payload[0]["starred"] is False
+
+
+def test_conversation_title_star_delete_endpoints(monkeypatch):
+    store = _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+    client = TestClient(app)
+
+    stream_response = client.post(
+        "/api/agent/stream",
+        json={"message": "Conversation action seed"},
+    )
+    assert stream_response.status_code == 200
+    conversation_id = next(iter(store.conversations.keys()))
+
+    rename_response = client.patch(
+        f"/api/conversations/{conversation_id}/title",
+        json={"title": "Renamed conversation"},
+    )
+    assert rename_response.status_code == 200
+    assert rename_response.json()["title"] == "Renamed conversation"
+
+    star_response = client.patch(
+        f"/api/conversations/{conversation_id}/star",
+        json={"starred": True},
+    )
+    assert star_response.status_code == 200
+    assert star_response.json()["starred"] is True
+
+    list_response = client.get("/api/conversations")
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == conversation_id
+    assert list_response.json()[0]["starred"] is True
+
+    delete_response = client.delete(f"/api/conversations/{conversation_id}")
+    assert delete_response.status_code == 204
+    assert conversation_id not in store.conversations
 
 
 def teardown_function():

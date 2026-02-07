@@ -26,6 +26,7 @@ export type UploadedAttachment = {
 export type ConversationSummary = {
   id: string;
   title?: string | null;
+  starred: boolean;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -53,6 +54,7 @@ export type PersistedMessage = {
 export type ConversationDetail = {
   id: string;
   title?: string | null;
+  starred: boolean;
   createdAt: string;
   updatedAt: string;
   messages: PersistedMessage[];
@@ -196,6 +198,7 @@ export async function listAgentConversations(
   return parsed.map((item) => ({
     id: item.id,
     title: item.title,
+    starred: item.starred,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
     messageCount: item.message_count,
@@ -233,10 +236,104 @@ export async function getAgentConversation(
   return {
     id: parsed.id,
     title: parsed.title,
+    starred: parsed.starred,
     createdAt: parsed.created_at,
     updatedAt: parsed.updated_at,
     messages: parsed.messages.map(mapPersistedMessage),
   };
+}
+
+async function parseSummaryResponse(
+  response: Response,
+): Promise<ConversationSummary> {
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = text;
+      }
+    }
+    throw normalizeError(response, payload);
+  }
+
+  const payload = await response.json();
+  const parsed = conversationSummarySchema.parse(payload);
+  return {
+    id: parsed.id,
+    title: parsed.title,
+    starred: parsed.starred,
+    createdAt: parsed.created_at,
+    updatedAt: parsed.updated_at,
+    messageCount: parsed.message_count,
+    lastMessageAt: parsed.last_message_at,
+  };
+}
+
+export async function renameAgentConversation(
+  conversationId: string,
+  title: string,
+  signal?: AbortSignal,
+): Promise<ConversationSummary> {
+  const response = await fetch(
+    buildUrl(`/api/conversations/${conversationId}/title`),
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title }),
+      signal,
+    },
+  );
+  return parseSummaryResponse(response);
+}
+
+export async function starAgentConversation(
+  conversationId: string,
+  starred: boolean,
+  signal?: AbortSignal,
+): Promise<ConversationSummary> {
+  const response = await fetch(
+    buildUrl(`/api/conversations/${conversationId}/star`),
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ starred }),
+      signal,
+    },
+  );
+  return parseSummaryResponse(response);
+}
+
+export async function deleteAgentConversation(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(
+    buildUrl(`/api/conversations/${conversationId}`),
+    {
+      method: "DELETE",
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = text;
+      }
+    }
+    throw normalizeError(response, payload);
+  }
 }
 
 export async function getAgentContextWindow(

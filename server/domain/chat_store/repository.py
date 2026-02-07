@@ -42,6 +42,44 @@ async def create_conversation(
     return conversation
 
 
+async def rename_conversation(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID | str,
+    title: str | None,
+) -> Conversation:
+    conversation = await ensure_conversation(session, conversation_id)
+    conversation.title = title
+    conversation.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(conversation)
+    return conversation
+
+
+async def set_conversation_starred(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID | str,
+    starred: bool,
+) -> Conversation:
+    conversation = await ensure_conversation(session, conversation_id)
+    conversation.starred = starred
+    conversation.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(conversation)
+    return conversation
+
+
+async def delete_conversation(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID | str,
+) -> None:
+    conversation = await ensure_conversation(session, conversation_id)
+    await session.delete(conversation)
+    await session.commit()
+
+
 async def save_uploaded_attachments(
     session: AsyncSession,
     uploaded_files: Sequence[StoredAttachment],
@@ -218,6 +256,7 @@ async def list_conversations(
             message_stats.c.conversation_id == Conversation.id,
         )
         .order_by(
+            Conversation.starred.desc(),
             func.coalesce(message_stats.c.last_message_at, Conversation.updated_at).desc(),
             Conversation.created_at.desc(),
         )
@@ -231,6 +270,7 @@ async def list_conversations(
             ConversationListEntry(
                 id=conversation.id,
                 title=conversation.title,
+                starred=conversation.starred,
                 created_at=conversation.created_at,
                 updated_at=conversation.updated_at,
                 message_count=int(message_count or 0),
@@ -238,6 +278,51 @@ async def list_conversations(
             )
         )
     return output
+
+
+async def get_conversation_summary(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID | str,
+) -> ConversationListEntry:
+    conversation_uuid = to_uuid(conversation_id)
+    message_stats = (
+        select(
+            Message.conversation_id.label("conversation_id"),
+            func.count(Message.id).label("message_count"),
+            func.max(Message.created_at).label("last_message_at"),
+        )
+        .where(Message.conversation_id == conversation_uuid)
+        .group_by(Message.conversation_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            Conversation,
+            message_stats.c.message_count,
+            message_stats.c.last_message_at,
+        )
+        .outerjoin(
+            message_stats,
+            message_stats.c.conversation_id == Conversation.id,
+        )
+        .where(Conversation.id == conversation_uuid)
+    )
+    row = (await session.execute(stmt)).one_or_none()
+    if row is None:
+        raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
+
+    conversation, message_count, last_message_at = row
+    return ConversationListEntry(
+        id=conversation.id,
+        title=conversation.title,
+        starred=conversation.starred,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        message_count=int(message_count or 0),
+        last_message_at=last_message_at,
+    )
 
 
 async def get_conversation_messages(

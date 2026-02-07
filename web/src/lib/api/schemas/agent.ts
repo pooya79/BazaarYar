@@ -21,6 +21,7 @@ export const uploadedAttachmentSchema = z.object({
 export const conversationSummarySchema = z.object({
   id: z.string(),
   title: z.string().nullable().optional(),
+  starred: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
   message_count: z.number().int().nonnegative(),
@@ -61,6 +62,7 @@ export const conversationMessageSchema = z.object({
 export const conversationDetailSchema = z.object({
   id: z.string(),
   title: z.string().nullable().optional(),
+  starred: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
   messages: z.array(conversationMessageSchema),
