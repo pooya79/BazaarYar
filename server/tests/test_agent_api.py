@@ -8,7 +8,8 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, ToolMessage
 
-from server.agents import api as agent_api
+import server.api.agents.router as agents_api
+import server.api.conversations.router as conversations_api
 from server.domain.chat_store import ConversationListEntry
 from server.main import app
 
@@ -242,27 +243,28 @@ class _DummySession:
         self.store = store
 
     async def get(self, model, key):
-        if model is agent_api.Conversation:
+        if model is agents_api.Conversation:
             return self.store.conversations.get(str(key))
-        if model is agent_api.Attachment:
+        if model is agents_api.Attachment:
             return self.store.attachments.get(str(key))
         return None
 
 
 def _patch_memory_store(monkeypatch):
     store = _MemoryStore()
-    monkeypatch.setattr(agent_api, "create_conversation", store.create_conversation)
-    monkeypatch.setattr(agent_api, "save_uploaded_attachments", store.save_uploaded_attachments)
+    monkeypatch.setattr(agents_api, "create_conversation", store.create_conversation)
+    monkeypatch.setattr(agents_api, "save_uploaded_attachments", store.save_uploaded_attachments)
     monkeypatch.setattr(
-        agent_api,
+        agents_api,
         "save_user_message_with_attachments",
         store.save_user_message_with_attachments,
     )
-    monkeypatch.setattr(agent_api, "save_assistant_message", store.save_assistant_message)
-    monkeypatch.setattr(agent_api, "list_conversations", store.list_conversations)
-    monkeypatch.setattr(agent_api, "get_conversation_messages", store.get_conversation_messages)
+    monkeypatch.setattr(agents_api, "save_assistant_message", store.save_assistant_message)
+    monkeypatch.setattr(agents_api, "build_context_window_for_model", store.build_context_window_for_model)
+    monkeypatch.setattr(conversations_api, "list_conversations", store.list_conversations)
+    monkeypatch.setattr(conversations_api, "get_conversation_messages", store.get_conversation_messages)
     monkeypatch.setattr(
-        agent_api,
+        conversations_api,
         "build_context_window_for_model",
         store.build_context_window_for_model,
     )
@@ -270,18 +272,18 @@ def _patch_memory_store(monkeypatch):
     async def _override_db():
         yield _DummySession(store)
 
-    app.dependency_overrides[agent_api.get_db_session] = _override_db
+    app.dependency_overrides[agents_api.get_db_session] = _override_db
     return store
 
 
 def _patch_agent(monkeypatch):
     stub = _StubAgent()
-    monkeypatch.setattr(agent_api, "get_agent", lambda: stub)
+    monkeypatch.setattr(agents_api, "get_agent", lambda: stub)
     return stub
 
 
 def _fake_uploaded_attachment(file_id: str):
-    return agent_api.StoredAttachment(
+    return agents_api.StoredAttachment(
         id=file_id,
         filename="hello.txt",
         content_type="text/plain",
@@ -316,7 +318,7 @@ def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatc
     async def _fake_store_upload(_upload):
         return _fake_uploaded_attachment(str(uuid4()))
 
-    monkeypatch.setattr(agent_api, "store_uploaded_file", _fake_store_upload)
+    monkeypatch.setattr(agents_api, "store_uploaded_file", _fake_store_upload)
     client = TestClient(app)
 
     upload_response = client.post(

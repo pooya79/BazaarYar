@@ -18,7 +18,7 @@ The agent platform is designed to support:
 
 ### High-Level Architecture
 - Frontend: Next.js app in `web/` (React + Tailwind CSS + Radix UI).
-- Backend API: FastAPI app in `server/`, served via Uvicorn.
+- Backend API: FastAPI app in `server/`, served via Uvicorn, with route composition in `server/api/router.py`.
 - Services: PostgreSQL (and pgAdmin) via Docker Compose in `infra/`.
 
 ### Key Directories
@@ -26,7 +26,10 @@ The agent platform is designed to support:
 - `infra/pgadmin/`: pgAdmin bootstrap files (saved servers and connection auth data).
 - `scripts/`: Project utility scripts for local automation and developer workflows.
 - `server/`: FastAPI backend application source and Python project config.
-- `server/agents/`: Agent runtime, API layer, streaming schema, and model integrations.
+- `server/api/`: Backend API routers organized by resource and combined in a main API router.
+- `server/api/agents/`: Agent endpoints (`/api/agent`) and resource-specific request/response models.
+- `server/api/conversations/`: Conversation endpoints (`/api/conversations`) and related response shaping.
+- `server/agents/`: Agent runtime, streaming schema, attachments handling, and model integrations.
 - `server/core/`: Core backend settings and environment-driven configuration.
 - `server/db/`: SQLAlchemy models, DB session utilities, and Alembic integration.
 - `server/db/alembic/`: Migration environment and migration version files.
