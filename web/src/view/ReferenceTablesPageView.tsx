@@ -37,6 +37,7 @@ import type {
 import { ReferenceTablesView } from "@/view/ReferenceTablesView";
 import {
   downloadBlob,
+  isAbortLikeError,
   parseApiErrorMessage,
   parseOptionalTypedValue,
   TABLE_IDENTIFIER_PATTERN,
@@ -117,6 +118,9 @@ export function ReferenceTablesPageView() {
       const nextTables = await listTables({ signal });
       setTables(nextTables);
     } catch (loadError) {
+      if (isAbortLikeError(loadError, signal)) {
+        return;
+      }
       setError(parseApiErrorMessage(loadError, "Failed to load tables."));
     } finally {
       setIsLoading(false);

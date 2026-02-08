@@ -115,6 +115,28 @@ export const parseApiErrorMessage = (
   return fallback;
 };
 
+export const isAbortLikeError = (
+  error: unknown,
+  signal?: AbortSignal,
+): boolean => {
+  if (signal?.aborted) {
+    return true;
+  }
+
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    if (error.name === "AbortError") {
+      return true;
+    }
+    return error.message.toLowerCase().includes("aborted");
+  }
+
+  return false;
+};
+
 export const extractRowValidationErrors = (error: unknown): string[] => {
   if (!error || typeof error !== "object") {
     return [];

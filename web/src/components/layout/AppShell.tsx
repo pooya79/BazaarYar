@@ -49,17 +49,27 @@ export function AppShell({ children }: AppShellProps) {
     };
   }, [displayToolId]);
 
-  const refreshConversations = useCallback(async () => {
-    const conversations = await listAgentConversations();
-    setChatItems(
-      conversations.map((conversation) => ({
-        id: conversation.id,
-        title: conversation.title?.trim() || "Untitled conversation",
-        meta: summarizeConversationMeta(conversation),
-        status: "active",
-        starred: conversation.starred,
-      })),
-    );
+  const refreshConversations = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const conversations = await listAgentConversations(signal);
+      setChatItems(
+        conversations.map((conversation) => ({
+          id: conversation.id,
+          title: conversation.title?.trim() || "Untitled conversation",
+          meta: summarizeConversationMeta(conversation),
+          status: "active",
+          starred: conversation.starred,
+        })),
+      );
+    } catch (error) {
+      if (
+        signal?.aborted ||
+        (error instanceof DOMException && error.name === "AbortError")
+      ) {
+        return;
+      }
+      console.error("Failed to load conversations", error);
+    }
   }, []);
 
   useEffect(() => {
@@ -85,7 +95,9 @@ export function AppShell({ children }: AppShellProps) {
   }, [isReferenceTablesRoute]);
 
   useEffect(() => {
-    void refreshConversations();
+    const controller = new AbortController();
+    void refreshConversations(controller.signal);
+    return () => controller.abort();
   }, [refreshConversations]);
 
   useEffect(() => {
