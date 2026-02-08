@@ -304,6 +304,7 @@ async def start_import(
         inferred_columns = importers.infer_columns(
             parsed.rows,
             max_columns=settings.tables_max_columns,
+            source_columns=parsed.source_columns,
         )
 
         table_columns = [_table_column_to_input(column) for column in table.columns]
@@ -361,6 +362,8 @@ async def start_import(
         response["provenance"] = {
             "attachment_id": payload.attachment_id,
             "source_format": parsed.source_format.value,
+            "dataset_name_suggestion": parsed.dataset_name_suggestion,
+            "source_columns": parsed.source_columns,
         }
         return response
     except Exception as exc:

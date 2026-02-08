@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import csv
 import io
 import json
+import math
 import re
-import zipfile
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree as ET
+
+import pandas as pd
 
 from server.agents.attachments import resolve_storage_path
 from server.db.models import Attachment
@@ -19,12 +19,24 @@ from .schema import validate_row_values
 from .types import ImportFormat, ReferenceTableColumnInput, TableDataType
 
 _HEADER_TOKEN_RE = re.compile(r"[^a-zA-Z0-9_]+")
+_CURRENCY_CHARS_RE = re.compile(r"[$€£¥₹₽₩₪₺₫]")
+_JALALI_RE = re.compile(
+    r"^(?P<year>1[34]\d{2})[/-](?P<month>\d{1,2})[/-](?P<day>\d{1,2})"
+    r"(?:(?:\s+|T)(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?)?$"
+)
+_TIMESTAMP_TOKEN_RE = re.compile(r"[:T]|[ ]\d{1,2}:\d{2}")
+_PANDAS_UNNAMED_HEADER_RE = re.compile(r"^Unnamed:\s*\d+$")
+_PANDAS_DUPLICATE_SUFFIX_RE = re.compile(r"^(?P<base>.+)\.(?P<index>\d+)$")
+_MAX_INFERENCE_SAMPLE = 250
+_SAMPLE_VALUE_COUNT = 3
 
 
 @dataclass
 class ParsedImportData:
     source_format: ImportFormat
     rows: list[dict[str, Any]]
+    dataset_name_suggestion: str
+    source_columns: dict[str, str]
 
 
 def _normalize_header(value: str, *, fallback_index: int) -> str:
@@ -38,167 +50,395 @@ def _normalize_header(value: str, *, fallback_index: int) -> str:
 
 def _dedupe_headers(headers: list[str]) -> list[str]:
     seen: dict[str, int] = {}
+    used: set[str] = set()
     output: list[str] = []
-    for header in headers:
+    for raw_header in headers:
+        header = raw_header[:63]
         count = seen.get(header, 0)
-        if count:
-            deduped = f"{header}_{count + 1}"
-        else:
-            deduped = header
+        while True:
+            if count == 0:
+                candidate = header
+            else:
+                suffix = f"_{count + 1}"
+                base_limit = max(1, 63 - len(suffix))
+                candidate = f"{header[:base_limit]}{suffix}"
+            if candidate not in used:
+                break
+            count += 1
         seen[header] = count + 1
-        output.append(deduped[:63])
+        used.add(candidate)
+        output.append(candidate)
     return output
 
 
-def _parse_csv(
+def _suggest_dataset_name(filename: str | None) -> str:
+    stem = Path(filename or "").stem.strip()
+    if not stem:
+        return "dataset"
+    candidate = _normalize_header(stem, fallback_index=1)
+    return candidate or "dataset"
+
+
+def _load_csv_dataframe(
     payload: bytes,
     *,
     has_header: bool,
     delimiter: str | None,
-) -> list[dict[str, Any]]:
-    decoded = payload.decode("utf-8", errors="replace")
+) -> pd.DataFrame:
+    kwargs: dict[str, Any] = {
+        "header": 0 if has_header else None,
+        "dtype": object,
+        "keep_default_na": False,
+    }
     if delimiter is None:
-        try:
-            dialect = csv.Sniffer().sniff(decoded[:2048])
-            resolved_delimiter = dialect.delimiter
-        except Exception:
-            resolved_delimiter = ","
+        kwargs["sep"] = None
+        kwargs["engine"] = "python"
     else:
-        resolved_delimiter = delimiter
+        kwargs["sep"] = delimiter
+        kwargs["engine"] = "python"
 
-    reader = csv.reader(io.StringIO(decoded), delimiter=resolved_delimiter)
-    rows = list(reader)
-    if not rows:
-        return []
-
-    if has_header:
-        raw_headers = rows[0]
-        headers = _dedupe_headers(
-            [
-                _normalize_header(str(value), fallback_index=index + 1)
-                for index, value in enumerate(raw_headers)
-            ]
-        )
-        data_rows = rows[1:]
-    else:
-        width = max((len(row) for row in rows), default=0)
-        headers = [f"column_{index + 1}" for index in range(width)]
-        data_rows = rows
-
-    output: list[dict[str, Any]] = []
-    for row in data_rows:
-        item: dict[str, Any] = {}
-        for index, header in enumerate(headers):
-            item[header] = row[index] if index < len(row) else None
-        output.append(item)
-    return output
+    try:
+        return pd.read_csv(io.BytesIO(payload), **kwargs)
+    except Exception as exc:  # pragma: no cover - defensive wrappers
+        raise ImportFormatError(f"Could not parse CSV file: {exc}") from exc
 
 
-def _parse_json(payload: bytes) -> list[dict[str, Any]]:
-    parsed = json.loads(payload.decode("utf-8", errors="replace"))
+def _load_json_dataframe(payload: bytes) -> pd.DataFrame:
+    try:
+        parsed = json.loads(payload.decode("utf-8", errors="replace"))
+    except Exception as exc:
+        raise ImportFormatError(f"Could not parse JSON file: {exc}") from exc
+
     if isinstance(parsed, dict) and isinstance(parsed.get("rows"), list):
         parsed = parsed["rows"]
 
     if not isinstance(parsed, list):
         raise ImportFormatError("JSON import expects a list of objects or {\"rows\": [...]}.")
 
-    output: list[dict[str, Any]] = []
     for index, item in enumerate(parsed, start=1):
         if not isinstance(item, dict):
             raise ImportFormatError(f"JSON row {index} is not an object.")
-        normalized: dict[str, Any] = {}
-        for key, value in item.items():
-            normalized[_normalize_header(str(key), fallback_index=1)] = value
-        output.append(normalized)
-    return output
 
-
-def _parse_xlsx(payload: bytes, *, has_header: bool) -> list[dict[str, Any]]:
     try:
-        from openpyxl import load_workbook
-    except Exception:
-        return _parse_xlsx_stdlib(payload, has_header=has_header)
-
-    workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
-    sheet = workbook.worksheets[0] if workbook.worksheets else None
-    if sheet is None:
-        return []
-
-    rows: list[list[Any]] = []
-    for row in sheet.iter_rows(values_only=True):
-        rows.append([cell for cell in row])
-    return _rows_to_objects(rows, has_header=has_header)
+        return pd.json_normalize(parsed, sep=".")
+    except Exception as exc:
+        raise ImportFormatError(f"Could not normalize JSON rows: {exc}") from exc
 
 
-def _parse_xlsx_stdlib(payload: bytes, *, has_header: bool) -> list[dict[str, Any]]:
-    ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-        shared_strings: list[str] = []
-        if "xl/sharedStrings.xml" in zf.namelist():
-            shared_root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
-            for item in shared_root.findall(".//x:si", ns):
-                parts = [node.text or "" for node in item.findall(".//x:t", ns)]
-                shared_strings.append("".join(parts))
+def _load_xlsx_dataframe(payload: bytes, *, has_header: bool) -> pd.DataFrame:
+    kwargs: dict[str, Any] = {
+        "sheet_name": 0,
+        "header": 0 if has_header else None,
+        "dtype": object,
+        "engine": "openpyxl",
+        "keep_default_na": False,
+    }
+    try:
+        return pd.read_excel(io.BytesIO(payload), **kwargs)
+    except ImportError as exc:
+        raise ImportFormatError(
+            "XLSX import requires openpyxl and pandas. Install dependencies and retry."
+        ) from exc
+    except Exception as exc:
+        raise ImportFormatError(f"Could not parse XLSX file: {exc}") from exc
 
-        sheet_names = sorted(
-            name
-            for name in zf.namelist()
-            if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
+
+def _coerce_jalali_temporal(text: str) -> str | None:
+    matched = _JALALI_RE.fullmatch(text)
+    if not matched:
+        return None
+    try:
+        import jdatetime
+
+        gregorian = jdatetime.date(
+            int(matched.group("year")),
+            int(matched.group("month")),
+            int(matched.group("day")),
+        ).togregorian()
+        if matched.group("hour") is None:
+            return gregorian.isoformat()
+        converted = datetime.combine(
+            gregorian,
+            time(
+                hour=int(matched.group("hour")),
+                minute=int(matched.group("minute")),
+                second=int(matched.group("second") or 0),
+            ),
         )
-        if not sheet_names:
-            return []
-
-        sheet_root = ET.fromstring(zf.read(sheet_names[0]))
-        rows: list[list[str | None]] = []
-        for row in sheet_root.findall(".//x:sheetData/x:row", ns):
-            values: list[str | None] = []
-            for cell in row.findall("x:c", ns):
-                cell_type = cell.attrib.get("t")
-                inline_node = cell.find("x:is/x:t", ns)
-                value_node = cell.find("x:v", ns)
-                if inline_node is not None and inline_node.text is not None:
-                    values.append(inline_node.text)
-                    continue
-                if value_node is None or value_node.text is None:
-                    values.append(None)
-                    continue
-                raw = value_node.text
-                if cell_type == "s":
-                    try:
-                        values.append(shared_strings[int(raw)])
-                    except Exception:
-                        values.append(raw)
-                else:
-                    values.append(raw)
-            rows.append(values)
-
-    return _rows_to_objects(rows, has_header=has_header)
+        return converted.isoformat()
+    except Exception:
+        return None
 
 
-def _rows_to_objects(rows: list[list[Any]], *, has_header: bool) -> list[dict[str, Any]]:
-    if not rows:
-        return []
+def _coerce_temporal_value(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    jalali = _coerce_jalali_temporal(text)
+    if jalali is not None:
+        return jalali
+
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed_ts = datetime.fromisoformat(normalized)
+        return parsed_ts.isoformat()
+    except Exception:
+        pass
+    try:
+        parsed_date = date.fromisoformat(normalized)
+        return parsed_date.isoformat()
+    except Exception:
+        pass
+
+    date_formats = [
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+        "%m/%d/%y",
+        "%m-%d-%y",
+        "%Y/%m/%d",
+    ]
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(text, fmt).date().isoformat()
+        except Exception:
+            continue
+
+    timestamp_formats = [
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%Y %H:%M:%S",
+        "%m-%d-%Y %H:%M",
+        "%m-%d-%Y %H:%M:%S",
+        "%m/%d/%Y %I:%M %p",
+        "%m/%d/%Y %I:%M:%S %p",
+        "%m-%d-%Y %I:%M %p",
+        "%m-%d-%Y %I:%M:%S %p",
+        "%Y/%m/%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+    ]
+    for fmt in timestamp_formats:
+        try:
+            return datetime.strptime(text, fmt).isoformat()
+        except Exception:
+            continue
+
+    return None
+
+
+def _coerce_boolean_value(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if not isinstance(value, str):
+        return None
+    lowered = value.strip().lower()
+    if lowered in {"true", "1", "yes", "y", "on"}:
+        return True
+    if lowered in {"false", "0", "no", "n", "off"}:
+        return False
+    return None
+
+
+def _parse_numeric_string(raw: str) -> float | int | None:
+    text = raw.strip()
+    if not text:
+        return None
+
+    is_negative = text.startswith("(") and text.endswith(")")
+    if is_negative:
+        text = text[1:-1].strip()
+
+    is_percent = text.endswith("%")
+    if is_percent:
+        text = text[:-1].strip()
+
+    text = _CURRENCY_CHARS_RE.sub("", text)
+    text = text.replace(",", "").replace(" ", "")
+
+    if not text or text in {".", "+", "-", "+.", "-."}:
+        return None
+
+    try:
+        number = float(text)
+    except Exception:
+        return None
+
+    if math.isnan(number) or math.isinf(number):
+        return None
+
+    if is_negative:
+        number = -number
+    if is_percent:
+        number /= 100
+
+    if not is_percent and number.is_integer():
+        return int(number)
+    return number
+
+
+def _coerce_integer_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        parsed = _parse_numeric_string(value)
+        if isinstance(parsed, int):
+            return parsed
+        if isinstance(parsed, float) and parsed.is_integer():
+            return int(parsed)
+    return None
+
+
+def _coerce_float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if math.isnan(numeric) or math.isinf(numeric):
+            return None
+        return numeric
+    if isinstance(value, str):
+        parsed = _parse_numeric_string(value)
+        if parsed is None:
+            return None
+        return float(parsed)
+    return None
+
+
+def _coerce_json_value(value: Any) -> dict[str, Any] | list[Any] | None:
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if not (text.startswith("{") or text.startswith("[")):
+        return None
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return None
+    if isinstance(parsed, (dict, list)):
+        return parsed
+    return None
+
+
+def _is_nullish(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (dict, list, tuple)):
+        return False
+    try:
+        return bool(pd.isna(value))
+    except Exception:
+        return False
+
+
+def _coerce_python_scalar(value: Any) -> Any:
+    if isinstance(value, (dict, list, tuple)):
+        return value
+    if hasattr(value, "item") and callable(value.item):
+        try:
+            return value.item()
+        except Exception:
+            return value
+    return value
+
+
+def _canonicalize_value(value: Any) -> Any:
+    value = _coerce_python_scalar(value)
+    if _is_nullish(value):
+        return None
+
+    if isinstance(value, dict):
+        return {str(key): _canonicalize_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonicalize_value(item) for item in value]
+
+    temporal = _coerce_temporal_value(value)
+    if temporal is not None:
+        return temporal
+
+    if isinstance(value, str):
+        boolean = _coerce_boolean_value(value)
+        if boolean is not None:
+            return boolean
+        numeric = _parse_numeric_string(value)
+        if numeric is not None:
+            return numeric
+        json_value = _coerce_json_value(value)
+        if json_value is not None:
+            return _canonicalize_value(json_value)
+        return value.strip()
+
+    if isinstance(value, (int, float, bool)):
+        return value
+
+    return str(value)
+
+
+def _dataframe_to_rows(
+    frame: pd.DataFrame,
+    *,
+    has_header: bool,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    if frame is None:
+        return [], {}
 
     if has_header:
-        headers = _dedupe_headers(
+        source_headers: list[str] = []
+        for item in frame.columns:
+            raw_header = "" if item is None else str(item).strip()
+            if _PANDAS_UNNAMED_HEADER_RE.fullmatch(raw_header):
+                source_headers.append("")
+                continue
+            matched = _PANDAS_DUPLICATE_SUFFIX_RE.fullmatch(raw_header)
+            if matched is not None:
+                source_headers.append(matched.group("base"))
+                continue
+            source_headers.append(raw_header)
+        normalized_headers = _dedupe_headers(
             [
-                _normalize_header(str(cell or ""), fallback_index=index + 1)
-                for index, cell in enumerate(rows[0])
+                _normalize_header(header, fallback_index=index + 1)
+                for index, header in enumerate(source_headers)
             ]
         )
-        data_rows = rows[1:]
     else:
-        width = max((len(row) for row in rows), default=0)
-        headers = [f"column_{index + 1}" for index in range(width)]
-        data_rows = rows
+        normalized_headers = [f"column_{index + 1}" for index in range(len(frame.columns))]
+        source_headers = normalized_headers[:]
 
-    output: list[dict[str, Any]] = []
-    for row in data_rows:
-        item: dict[str, Any] = {}
-        for index, header in enumerate(headers):
-            item[header] = row[index] if index < len(row) else None
-        output.append(item)
-    return output
+    source_columns = {
+        normalized: (source.strip() if source.strip() else normalized)
+        for normalized, source in zip(normalized_headers, source_headers)
+    }
+
+    mapped = frame.copy()
+    mapped.columns = normalized_headers
+
+    rows: list[dict[str, Any]] = []
+    for item in mapped.to_dict(orient="records"):
+        rows.append({key: _canonicalize_value(value) for key, value in item.items()})
+    return rows, source_columns
 
 
 def detect_format(
@@ -233,88 +473,93 @@ def parse_attachment(
 
     resolved_format = detect_format(source_format=source_format, filename=attachment.filename)
     payload = path.read_bytes()
+    dataset_name_suggestion = _suggest_dataset_name(attachment.filename)
 
     if resolved_format == ImportFormat.CSV:
-        rows = _parse_csv(payload, has_header=has_header, delimiter=delimiter)
+        frame = _load_csv_dataframe(payload, has_header=has_header, delimiter=delimiter)
+        rows, source_columns = _dataframe_to_rows(frame, has_header=has_header)
     elif resolved_format == ImportFormat.JSON:
-        rows = _parse_json(payload)
+        frame = _load_json_dataframe(payload)
+        rows, source_columns = _dataframe_to_rows(frame, has_header=True)
     elif resolved_format == ImportFormat.XLSX:
-        rows = _parse_xlsx(payload, has_header=has_header)
+        frame = _load_xlsx_dataframe(payload, has_header=has_header)
+        rows, source_columns = _dataframe_to_rows(frame, has_header=has_header)
     else:  # pragma: no cover - enum guard
         raise ImportFormatError(f"Unsupported format '{resolved_format}'.")
 
-    return ParsedImportData(source_format=resolved_format, rows=rows)
+    return ParsedImportData(
+        source_format=resolved_format,
+        rows=rows,
+        dataset_name_suggestion=dataset_name_suggestion,
+        source_columns=source_columns,
+    )
 
 
-def _infer_type(values: list[Any]) -> tuple[TableDataType, float]:
-    non_null = [item for item in values if item not in (None, "")]
+def _coerce_temporal_kind(value: Any) -> tuple[str, str] | None:
+    converted = _coerce_temporal_value(value)
+    if converted is None:
+        return None
+    if _TIMESTAMP_TOKEN_RE.search(converted):
+        return ("timestamp", converted)
+    return ("date", converted)
+
+
+def _ratio(values: list[Any], parser) -> float:
+    if not values:
+        return 0.0
+    successes = 0
+    for value in values:
+        if parser(value):
+            successes += 1
+    return successes / len(values)
+
+
+def _infer_type(values: list[Any]) -> tuple[TableDataType, float, list[Any], bool]:
+    sample = [_canonicalize_value(item) for item in values[:_MAX_INFERENCE_SAMPLE]]
+    non_null = [item for item in sample if not _is_nullish(item)]
+    nullable = len(non_null) < len(sample)
     if not non_null:
-        return TableDataType.TEXT, 0.4
+        return TableDataType.TEXT, 0.4, [], True
 
-    def _all(pred) -> bool:
-        for value in non_null:
-            if not pred(value):
-                return False
-        return True
+    bool_ratio = _ratio(non_null, lambda item: _coerce_boolean_value(item) is not None)
+    int_ratio = _ratio(non_null, lambda item: _coerce_integer_value(item) is not None)
+    float_ratio = _ratio(non_null, lambda item: _coerce_float_value(item) is not None)
+    date_ratio = _ratio(
+        non_null,
+        lambda item: (candidate := _coerce_temporal_kind(item)) is not None and candidate[0] == "date",
+    )
+    timestamp_ratio = _ratio(
+        non_null,
+        lambda item: (candidate := _coerce_temporal_kind(item)) is not None and candidate[0] == "timestamp",
+    )
+    json_ratio = _ratio(non_null, lambda item: _coerce_json_value(item) is not None)
 
-    if _all(lambda item: isinstance(item, bool) or str(item).strip().lower() in {"true", "false", "0", "1"}):
-        return TableDataType.BOOLEAN, 0.9
+    ratios: list[tuple[TableDataType, float]] = [
+        (TableDataType.BOOLEAN, bool_ratio),
+        (TableDataType.INTEGER, int_ratio),
+        (TableDataType.FLOAT, float_ratio),
+        (TableDataType.TIMESTAMP, timestamp_ratio),
+        (TableDataType.DATE, date_ratio),
+        (TableDataType.JSON, json_ratio),
+    ]
+    inferred_type, best_ratio = max(ratios, key=lambda item: item[1])
 
-    if _all(lambda item: isinstance(item, int) or (isinstance(item, str) and item.strip().isdigit())):
-        return TableDataType.INTEGER, 0.9
+    sample_values: list[Any] = []
+    for value in non_null:
+        sample_values.append(value)
+        if len(sample_values) >= _SAMPLE_VALUE_COUNT:
+            break
 
-    def _is_float_like(item: Any) -> bool:
-        if isinstance(item, (int, float)):
-            return True
-        if not isinstance(item, str):
-            return False
-        try:
-            float(item.strip())
-            return True
-        except Exception:
-            return False
-
-    if _all(_is_float_like):
-        return TableDataType.FLOAT, 0.85
-
-    def _is_date_like(item: Any) -> bool:
-        if isinstance(item, date) and not isinstance(item, datetime):
-            return True
-        if not isinstance(item, str):
-            return False
-        try:
-            date.fromisoformat(item.strip())
-            return True
-        except Exception:
-            return False
-
-    if _all(_is_date_like):
-        return TableDataType.DATE, 0.8
-
-    def _is_timestamp_like(item: Any) -> bool:
-        if isinstance(item, datetime):
-            return True
-        if not isinstance(item, str):
-            return False
-        try:
-            datetime.fromisoformat(item.strip().replace("Z", "+00:00"))
-            return True
-        except Exception:
-            return False
-
-    if _all(_is_timestamp_like):
-        return TableDataType.TIMESTAMP, 0.75
-
-    if _all(lambda item: isinstance(item, (dict, list))):
-        return TableDataType.JSON, 0.7
-
-    return TableDataType.TEXT, 0.6
+    if best_ratio < 0.7:
+        return TableDataType.TEXT, 0.6, sample_values, nullable
+    return inferred_type, round(best_ratio, 3), sample_values, nullable
 
 
 def infer_columns(
     rows: list[dict[str, Any]],
     *,
     max_columns: int,
+    source_columns: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     if not rows:
         return []
@@ -330,16 +575,63 @@ def infer_columns(
 
     inferred: list[dict[str, Any]] = []
     for key in all_keys:
-        sample = [row.get(key) for row in rows[:250]]
-        inferred_type, confidence = _infer_type(sample)
+        sample = [row.get(key) for row in rows[:_MAX_INFERENCE_SAMPLE]]
+        inferred_type, confidence, sample_values, nullable = _infer_type(sample)
         inferred.append(
             {
                 "name": key,
+                "source_name": (source_columns or {}).get(key, key),
                 "data_type": inferred_type.value,
                 "confidence": confidence,
+                "nullable": nullable,
+                "sample_values": sample_values,
             }
         )
     return inferred
+
+
+def _preprocess_for_column(value: Any, data_type: TableDataType) -> Any:
+    if value is None:
+        return None
+
+    if data_type == TableDataType.INTEGER:
+        converted = _coerce_integer_value(value)
+        return value if converted is None else converted
+
+    if data_type == TableDataType.FLOAT:
+        converted = _coerce_float_value(value)
+        return value if converted is None else converted
+
+    if data_type == TableDataType.BOOLEAN:
+        converted = _coerce_boolean_value(value)
+        return value if converted is None else converted
+
+    if data_type == TableDataType.DATE:
+        converted = _coerce_temporal_value(value)
+        if converted is None:
+            return value
+        if _TIMESTAMP_TOKEN_RE.search(converted):
+            try:
+                return datetime.fromisoformat(converted.replace("Z", "+00:00")).date().isoformat()
+            except Exception:
+                return converted
+        return converted
+
+    if data_type == TableDataType.TIMESTAMP:
+        converted = _coerce_temporal_value(value)
+        return value if converted is None else converted
+
+    if data_type == TableDataType.JSON:
+        converted = _coerce_json_value(value)
+        if converted is not None:
+            return converted
+        return value
+
+    if data_type == TableDataType.TEXT and isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else None
+
+    return value
 
 
 def validate_import_rows(
@@ -354,11 +646,20 @@ def validate_import_rows(
 
     normalized_rows: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    column_map = {column.name: column for column in columns}
 
     for index, row in enumerate(rows, start=1):
+        prepared: dict[str, Any] = {}
+        for key, value in row.items():
+            column = column_map.get(key)
+            if column is None:
+                prepared[key] = value
+                continue
+            prepared[key] = _preprocess_for_column(value, column.data_type)
+
         try:
             normalized = validate_row_values(
-                row,
+                prepared,
                 columns=columns,
                 max_cell_length=max_cell_length,
             )

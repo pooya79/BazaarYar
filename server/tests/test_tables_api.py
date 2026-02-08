@@ -146,6 +146,22 @@ class _TablesStore:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "finished_at": datetime.now(timezone.utc).isoformat(),
+            "inferred_columns": [
+                {
+                    "name": "campaign",
+                    "source_name": "Campaign",
+                    "data_type": "text",
+                    "confidence": 1.0,
+                    "nullable": False,
+                    "sample_values": ["Spring"],
+                }
+            ],
+            "provenance": {
+                "attachment_id": str(uuid4()),
+                "source_format": "csv",
+                "dataset_name_suggestion": "seed",
+                "source_columns": {"campaign": "Campaign"},
+            },
         }
 
     async def get_import_job(self, _session, *, table_id, job_id):
@@ -287,6 +303,8 @@ def test_tables_query_batch_import_export_endpoints(monkeypatch):
     )
     assert import_response.status_code == 200
     assert import_response.json()["status"] == "completed"
+    assert import_response.json()["provenance"]["dataset_name_suggestion"] == "seed"
+    assert import_response.json()["inferred_columns"][0]["source_name"] == "Campaign"
 
     status_response = client.get(f"/api/tables/{table_id}/imports/{uuid4()}")
     assert status_response.status_code == 200
