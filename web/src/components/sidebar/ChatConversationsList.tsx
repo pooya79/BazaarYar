@@ -21,8 +21,15 @@ const menuItemClass = "cursor-pointer rounded-lg px-2.5 py-2";
 type ChatStatus = ChatItem["status"];
 
 const statusClasses: Record<ChatStatus, string> = {
-  active: "bg-marketing-status-active",
-  draft: "bg-marketing-status-draft",
+  active:
+    "bg-marketing-status-active/10 text-marketing-status-active border-marketing-status-active/20",
+  draft:
+    "bg-marketing-status-draft/10 text-marketing-status-draft border-marketing-status-draft/25",
+};
+
+const statusLabels: Record<ChatStatus, string> = {
+  active: "Live",
+  draft: "Draft",
 };
 
 type ChatConversationsListProps = {
@@ -56,24 +63,21 @@ export function ChatConversationsList({
       )}
     >
       {!hasChats ? (
-        <div className="rounded-[10px] border border-dashed border-marketing-border bg-marketing-surface px-3 py-4 text-xs text-marketing-text-muted">
+        <div className="rounded-lg border border-dashed border-marketing-border bg-marketing-surface px-3 py-4 text-xs text-marketing-text-muted">
           No chats yet. Start a conversation to see it here.
         </div>
       ) : (
         chatItems.map((chat) => {
           const isActive = activeChatId === chat.id;
-          const statusClass =
-            statusClasses[chat.status] ?? "bg-marketing-border";
 
           return (
             <div
               key={chat.id}
               className={cn(
-                "relative flex items-start gap-2 rounded-[10px] border border-marketing-border bg-marketing-surface py-2.5 pr-2 pl-3 transition-all duration-200",
-                !isActive &&
-                  "hover:border-marketing-secondary hover:shadow-marketing-soft",
+                "relative flex items-start gap-2 rounded-lg border border-marketing-border bg-marketing-surface py-2.5 pr-2 pl-3 transition-all duration-200",
+                !isActive && "hover:border-input hover:shadow-marketing-soft",
                 isActive &&
-                  "border-marketing-primary ring-1 ring-marketing-accent-ring",
+                  "border-marketing-primary ring-1 ring-marketing-accent-ring/60",
               )}
             >
               <Button
@@ -83,26 +87,28 @@ export function ChatConversationsList({
                 onClick={() => onChatSelect(chat.id)}
               >
                 <div className="flex min-w-0 flex-col gap-1">
-                  <div className="flex min-w-0 items-center gap-2 text-[0.9rem] font-semibold">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
                     <span className="truncate">{chat.title}</span>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 items-center rounded-sm border px-1.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.06em]",
+                        statusClasses[chat.status] ?? "border-marketing-border",
+                      )}
+                    >
+                      {statusLabels[chat.status] ?? "Active"}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2 text-xs text-marketing-text-muted">
+                    <span className="truncate">{chat.meta}</span>
                     {chat.starred && (
                       <Star
                         className={cn(
                           iconSmallClass,
-                          "fill-current text-marketing-secondary",
+                          "shrink-0 fill-current text-marketing-secondary",
                         )}
                         aria-hidden="true"
                       />
                     )}
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2 text-xs text-marketing-text-muted">
-                    <span
-                      className={cn(
-                        "inline-block h-1.5 w-1.5 rounded-full",
-                        statusClass,
-                      )}
-                    />
-                    <span className="truncate">{chat.meta}</span>
                   </div>
                 </div>
               </Button>
@@ -117,7 +123,7 @@ export function ChatConversationsList({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
+                    className="h-8 w-8 rounded-md text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
                     aria-label="Chat options"
                   >
                     <MoreHorizontal className={iconClass} aria-hidden="true" />

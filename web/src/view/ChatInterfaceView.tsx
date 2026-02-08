@@ -441,7 +441,7 @@ export function ChatInterfaceView() {
   return (
     <>
       <div
-        className="flex flex-1 flex-col overflow-y-auto p-4 md:p-8"
+        className="flex flex-1 flex-col overflow-y-auto px-6 py-8 md:px-10 md:py-10"
         ref={chatWrapperRef}
       >
         {!hasMessages ? (

@@ -6,8 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const iconClass = "size-[18px]";
-const gradientClass =
-  "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
 export type PendingAttachment = {
   id: string;
@@ -61,8 +59,8 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-marketing-border bg-marketing-surface-translucent p-4 backdrop-blur-[12px] md:px-8 md:py-6">
-      <div className="mx-auto max-w-[900px]">
+    <div className="border-t border-marketing-border bg-marketing-surface-translucent px-6 py-4 backdrop-blur-[12px] md:px-10 md:py-6">
+      <div className="mx-auto max-w-[800px]">
         <input
           ref={fileInputRef}
           className="hidden"
@@ -73,9 +71,9 @@ export function ChatInput({
         />
         <div
           className={cn(
-            "flex items-end gap-3 rounded-2xl border-2 border-marketing-border bg-marketing-surface py-2 pr-2 pl-5 transition-all duration-300",
+            "flex items-end gap-3 rounded-lg border border-input bg-marketing-surface py-2 pr-2 pl-4 transition-all duration-200",
             "shadow-marketing-soft",
-            "focus-within:border-marketing-secondary focus-within:ring-4 focus-within:ring-marketing-accent-glow",
+            "focus-within:border-marketing-primary focus-within:ring-4 focus-within:ring-marketing-accent-glow",
           )}
         >
           <div className="flex-1">
@@ -85,7 +83,7 @@ export function ChatInput({
                   <div
                     key={attachment.id}
                     className={cn(
-                      "flex items-center gap-2 rounded-lg border px-2 py-1 text-xs",
+                      "flex items-center gap-2 rounded-md border px-2 py-1 text-xs",
                       attachment.status === "error"
                         ? "border-marketing-border border-dashed bg-marketing-surface-translucent text-marketing-text-muted"
                         : "border-marketing-border bg-marketing-surface-translucent text-marketing-text-primary",
@@ -118,7 +116,7 @@ export function ChatInput({
             ) : null}
             <Textarea
               ref={textareaRef}
-              className="min-h-0 max-h-[150px] flex-1 resize-none border-0 bg-transparent px-0 py-3 text-base text-marketing-text-primary placeholder:text-marketing-text-muted shadow-none focus-visible:ring-0"
+              className="min-h-0 max-h-[120px] flex-1 resize-none border-0 bg-transparent px-0 py-2 text-[0.9375rem] text-marketing-text-primary placeholder:text-marketing-text-muted shadow-none focus-visible:ring-0"
               placeholder="Ask me to write ad copy, optimize SEO, or plan a campaign..."
               rows={1}
               value={value}
@@ -126,11 +124,11 @@ export function ChatInput({
               onKeyDown={onKeyDown}
             />
           </div>
-          <div className="flex gap-2 pb-2">
+          <div className="flex gap-1 pb-1">
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
+              className="h-8 w-8 rounded-md text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-text-primary"
               type="button"
               title="Attach"
               onClick={() => fileInputRef.current?.click()}
@@ -140,7 +138,7 @@ export function ChatInput({
             <Button
               variant="ghost"
               size="icon"
-              className="h-10 w-10 rounded-lg text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-primary"
+              className="h-8 w-8 rounded-md text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-text-primary"
               type="button"
               title="Voice"
             >
@@ -150,10 +148,8 @@ export function ChatInput({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-10 w-10 rounded-xl text-marketing-on-primary transition-all duration-200 hover:text-marketing-on-primary",
-                gradientClass,
-                "shadow-marketing-soft",
-                "hover:scale-105 hover:-rotate-6 hover:shadow-marketing-hover",
+                "ml-1 h-8 w-8 rounded-md bg-marketing-primary text-marketing-on-primary shadow-marketing-soft transition-colors duration-150 hover:bg-marketing-secondary hover:text-marketing-on-primary",
+                "disabled:pointer-events-none disabled:bg-marketing-border disabled:text-marketing-text-muted",
               )}
               type="button"
               onClick={onSend}
@@ -163,16 +159,16 @@ export function ChatInput({
             </Button>
           </div>
         </div>
-        <div className="mt-3 flex flex-col items-start gap-3 px-2 text-xs text-marketing-text-muted md:flex-row md:items-center md:justify-between">
+        <div className="mt-3 flex flex-col items-start gap-2 px-1 text-[0.7rem] text-marketing-text-muted md:flex-row md:items-center md:justify-between">
           <span>AI can make mistakes. Verify important data.</span>
           <Button
             type="button"
             variant="ghost"
-            className="h-auto rounded-full border-0 bg-marketing-accent-medium px-2.5 py-1 text-xs font-semibold text-marketing-primary hover:bg-marketing-accent-strong hover:text-marketing-primary"
+            className="h-auto rounded-md border border-marketing-border bg-secondary px-2.5 py-1 text-[0.7rem] font-semibold text-marketing-text-secondary hover:border-input hover:bg-secondary hover:text-marketing-text-primary"
             onClick={onToggleBrandVoice}
           >
             <span
-              className="h-2 w-2 rounded-full bg-marketing-primary"
+              className="h-1.5 w-1.5 rounded-full bg-marketing-primary"
               aria-hidden="true"
             />
             <span>{brandVoice}</span>

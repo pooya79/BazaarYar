@@ -202,7 +202,8 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
+    <div className="relative flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--color-marketing-accent-soft),transparent_42%)]" />
       <button
         type="button"
         aria-label="Close sidebar"
@@ -230,7 +231,7 @@ export function AppShell({ children }: AppShellProps) {
         onToolSelect={handleToolClick}
       />
 
-      <main className="relative flex flex-1 flex-col overflow-hidden bg-marketing-bg">
+      <main className="relative z-[1] flex flex-1 flex-col overflow-hidden bg-marketing-bg">
         <ChatHeader
           pageTitle={pageTitle}
           PageIcon={PageIcon}

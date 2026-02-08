@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, Rocket, Settings } from "lucide-react";
+import { ChevronDown, Plus, Settings } from "lucide-react";
 import type {
   ChatAction,
   ChatItem,
@@ -12,8 +12,6 @@ import { cn } from "@/lib/utils";
 import { ChatConversationsList } from "./ChatConversationsList";
 
 const iconClass = "size-[18px]";
-const gradientClass =
-  "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
 type ChatSidebarProps = {
   isOpen: boolean;
@@ -61,51 +59,44 @@ export function ChatSidebar({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-[100] flex h-screen w-[300px] -translate-x-full flex-col border-r border-marketing-border bg-marketing-sidebar-bg p-6 shadow-marketing-drawer transition-[transform,width,padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:h-auto md:translate-x-0 md:shadow-none",
+        "fixed left-0 top-0 z-[100] flex h-screen w-[280px] -translate-x-full flex-col border-r border-marketing-border bg-marketing-sidebar-bg shadow-marketing-drawer transition-[transform,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:h-auto md:translate-x-0 md:shadow-none",
         isOpen && "translate-x-0",
         !isOpen &&
-          "md:-translate-x-full md:w-0 md:px-0 md:border-r-0 md:overflow-hidden md:shadow-marketing-drawer",
+          "md:-translate-x-full md:w-0 md:border-r-0 md:overflow-hidden md:shadow-marketing-drawer",
       )}
     >
-      <div className="flex items-center gap-3 pb-6">
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-xl text-marketing-on-primary shadow-marketing-soft",
-            gradientClass,
-          )}
-        >
-          <Rocket className={iconClass} aria-hidden="true" />
+      <div className="flex items-center gap-3 border-b border-marketing-border px-6 py-6">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-marketing-primary text-sm font-bold text-marketing-on-primary shadow-marketing-soft">
+          M
         </div>
-        <div className="text-xl font-bold tracking-[-0.5px] text-marketing-text-primary">
-          AI Assistant
+        <div className="text-lg font-bold tracking-[-0.02em] text-marketing-text-primary">
+          Marketing AI
         </div>
       </div>
-      <Separator className="bg-marketing-border" />
 
-      <ScrollArea className="mt-6 min-h-0 flex-1 pr-3">
-        <div className="space-y-7 pb-6">
+      <ScrollArea className="min-h-0 flex-1 px-4 py-5">
+        <div className="space-y-6 pb-5">
           <div>
             <Button
               type="button"
               className={cn(
-                "mb-4 w-full justify-center rounded-xl px-3 py-2 text-sm font-semibold text-marketing-on-primary shadow-marketing-soft transition-all",
-                gradientClass,
-                "hover:-translate-y-0.5 hover:shadow-marketing-hover",
+                "mb-5 h-10 w-full justify-center rounded-md border-0 bg-marketing-primary px-3 text-sm font-semibold text-marketing-on-primary shadow-marketing-soft transition-all",
+                "hover:-translate-y-0.5 hover:bg-marketing-secondary hover:shadow-marketing-hover",
               )}
               onClick={onNewChat}
             >
               <Plus className={iconClass} aria-hidden="true" />
-              New chat
+              New Chat
             </Button>
             <Button
               type="button"
               variant="ghost"
-              className="w-full flex-1 justify-between px-2 py-0 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary hover:bg-transparent hover:text-marketing-text-secondary"
+              className="w-full flex-1 justify-between px-2 py-0 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-marketing-text-muted hover:bg-transparent hover:text-marketing-text-muted"
               onClick={handleToggleChats}
               aria-expanded={chatsOpen}
               aria-controls={chatPanelId}
             >
-              <span>Chats</span>
+              <span>Active Workspaces</span>
               <ChevronDown
                 className={cn(
                   iconClass,
@@ -139,7 +130,7 @@ export function ChatSidebar({
           </div>
 
           <div>
-            <div className="mb-3 pl-2 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary">
+            <div className="mb-2 pl-2 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-marketing-text-muted">
               Tools
             </div>
             <ul className="space-y-1">
@@ -152,11 +143,11 @@ export function ChatSidebar({
                       type="button"
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start gap-2.5 rounded-lg px-3 py-2.5 text-[0.9rem] font-medium text-marketing-text-secondary",
+                        "h-auto w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[0.875rem] font-medium text-marketing-text-secondary",
                         !isActive &&
-                          "hover:bg-marketing-accent-soft hover:text-marketing-primary",
+                          "hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
                         isActive &&
-                          "bg-marketing-accent-strong font-semibold text-marketing-primary",
+                          "bg-marketing-accent-soft font-semibold text-marketing-primary",
                       )}
                       onClick={() => onToolSelect(tool.id)}
                     >
@@ -172,7 +163,7 @@ export function ChatSidebar({
           </div>
 
           <div>
-            <div className="mb-3 pl-2 text-xs font-bold uppercase tracking-[1.2px] text-marketing-text-secondary">
+            <div className="mb-2 pl-2 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-marketing-text-muted">
               Library
             </div>
             <ul className="space-y-1">
@@ -185,11 +176,11 @@ export function ChatSidebar({
                       type="button"
                       variant="ghost"
                       className={cn(
-                        "w-full justify-start gap-2.5 rounded-lg px-3 py-2.5 text-[0.9rem] font-medium text-marketing-text-secondary",
+                        "h-auto w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[0.875rem] font-medium text-marketing-text-secondary",
                         !isActive &&
-                          "hover:bg-marketing-accent-soft hover:text-marketing-primary",
+                          "hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
                         isActive &&
-                          "bg-marketing-accent-strong font-semibold text-marketing-primary",
+                          "bg-marketing-accent-soft font-semibold text-marketing-primary",
                       )}
                       onClick={() => onToolSelect(item.id)}
                     >
@@ -210,22 +201,23 @@ export function ChatSidebar({
       <Button
         type="button"
         variant="ghost"
-        className="mt-5 h-auto w-full justify-start gap-3 rounded-[10px] px-3 py-2.5 text-left text-marketing-text-primary hover:bg-marketing-accent-soft"
+        className="m-4 h-auto w-auto justify-start gap-3 rounded-md border border-transparent bg-marketing-sidebar-bg px-2.5 py-2 text-left text-marketing-text-primary hover:border-marketing-border hover:bg-marketing-accent-medium"
       >
-        <Avatar className="size-9">
-          <AvatarFallback
-            className={cn("text-marketing-on-primary", gradientClass)}
-          >
+        <Avatar className="size-7">
+          <AvatarFallback className="border border-marketing-border bg-marketing-surface text-xs font-semibold text-marketing-text-secondary">
             JD
           </AvatarFallback>
         </Avatar>
         <div className="flex-1">
-          <div className="text-[0.9rem] font-semibold">John Doe</div>
-          <div className="text-xs text-marketing-text-muted">
-            Workspace Manager
+          <div className="text-[0.8rem] font-semibold">John Doe</div>
+          <div className="text-[0.7rem] text-marketing-text-muted">
+            Marketing Manager
           </div>
         </div>
-        <Settings className={iconClass} aria-hidden="true" />
+        <Settings
+          className="size-4 text-marketing-text-muted"
+          aria-hidden="true"
+        />
       </Button>
     </aside>
   );

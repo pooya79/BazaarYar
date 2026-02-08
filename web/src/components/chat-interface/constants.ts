@@ -1,6 +1,6 @@
 import {
-  BarChart3,
   Calendar,
+  Globe,
   Mail,
   MessageSquare,
   PenLine,
@@ -13,9 +13,9 @@ import {
 import type { ChatItem, NavItem, QuickAction } from "./types";
 
 export const tools: NavItem[] = [
-  { id: "assistant", label: "Chat", icon: MessageSquare },
+  { id: "assistant", label: "AI Assistant", icon: MessageSquare },
   { id: "content", label: "Content Studio", icon: PenLine },
-  { id: "seo", label: "SEO Keywords", icon: BarChart3 },
+  { id: "seo", label: "SEO Research", icon: Search },
   { id: "email", label: "Email Campaigns", icon: Mail },
   { id: "social", label: "Social Media", icon: Smartphone },
   { id: "ads", label: "Ad Copy", icon: Target },
@@ -52,25 +52,25 @@ export const initialChats: ChatItem[] = [
 export const quickActions: QuickAction[] = [
   {
     title: "Generate Ad Copy",
-    description: "Create high-converting ads for Google, Facebook, or LinkedIn",
+    description: "High-converting ads for Google, Facebook, or LinkedIn",
     icon: Target,
     prompt: "Write Google Ads for a fitness app targeting millennials",
   },
   {
     title: "Content Calendar",
-    description: "Plan your social media and blog content strategy",
+    description: "Plan social media and blog content strategy",
     icon: Calendar,
     prompt: "Create a content calendar for a B2B SaaS company",
   },
   {
     title: "SEO Optimization",
-    description: "Improve rankings with keyword suggestions and meta tags",
-    icon: Search,
+    description: "Keyword research and meta tag improvements",
+    icon: Globe,
     prompt: "Optimize this headline for SEO: Best Coffee Makers 2024",
   },
   {
     title: "Email Sequence",
-    description: "Build nurture campaigns and newsletters",
+    description: "Nurture campaigns and newsletter flows",
     icon: Mail,
     prompt: "Write a welcome email series for new subscribers",
   },
@@ -83,9 +83,4 @@ export const botResponses = [
   "Strategic thinking! For this campaign, let's segment your audience into three buckets: Awareness, Consideration, and Decision. Here's the content matrix...",
 ];
 
-export const brandVoices = [
-  "Professional + Friendly",
-  "Bold + Energetic",
-  "Luxury + Sophisticated",
-  "Casual + Witty",
-];
+export const brandVoices = ["Professional", "Bold", "Luxury", "Casual"];

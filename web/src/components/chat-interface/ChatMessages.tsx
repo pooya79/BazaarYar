@@ -1,8 +1,8 @@
 import {
+  Bot,
   FileSpreadsheet,
   FileText,
   Image as ImageIcon,
-  Rocket,
   User,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,13 +10,12 @@ import { cn } from "@/lib/utils";
 import type { Message } from "./types";
 
 const iconClass = "size-[18px]";
-const gradientClass =
-  "bg-gradient-to-br from-marketing-gradient-from to-marketing-gradient-to";
 
 const bubbleBaseClass =
-  "rounded-2xl border border-marketing-border bg-marketing-surface text-marketing-text-primary shadow-marketing-subtle";
+  "rounded-xl border border-marketing-border bg-marketing-surface text-marketing-text-primary shadow-marketing-subtle";
 
-const bubbleContentClass = "px-5 py-4 leading-relaxed whitespace-pre-line";
+const bubbleContentClass =
+  "px-4 py-3.5 leading-relaxed whitespace-pre-line text-[0.9375rem]";
 
 type ChatMessagesProps = {
   messages: Message[];
@@ -45,7 +44,7 @@ function AttachmentIcon({
 
 export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-8">
       {messages.map((message) => (
         <div
           key={message.id}
@@ -56,21 +55,21 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
         >
           <div
             className={cn(
-              "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-marketing-on-primary shadow-marketing-soft",
+              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border text-[0.75rem] font-semibold shadow-none",
               message.sender === "bot"
-                ? gradientClass
-                : "bg-marketing-text-primary",
+                ? "border-transparent bg-marketing-primary text-marketing-on-primary"
+                : "border-marketing-border bg-secondary text-marketing-text-secondary",
             )}
           >
             {message.sender === "bot" ? (
-              <Rocket className={iconClass} aria-hidden="true" />
+              <Bot className={iconClass} aria-hidden="true" />
             ) : (
               <User className={iconClass} aria-hidden="true" />
             )}
           </div>
-          <div className="flex max-w-[80%] flex-col gap-1.5">
+          <div className="flex max-w-[70%] flex-col gap-1">
             {message.sender === "bot" && message.kind && (
-              <div className="px-1 text-[11px] uppercase tracking-[0.2em] text-marketing-text-muted">
+              <div className="px-1 text-[0.65rem] uppercase tracking-[0.08em] text-marketing-text-muted">
                 {message.kind.replace("_", " ")}
               </div>
             )}
@@ -79,7 +78,7 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
                 "gap-0 py-0",
                 bubbleBaseClass,
                 message.sender === "user"
-                  ? "border-0 bg-marketing-text-primary text-marketing-on-primary rounded-br-[4px]"
+                  ? "rounded-bl-xl rounded-br-[4px] border-0 bg-marketing-text-primary text-marketing-on-primary"
                   : "rounded-bl-[4px]",
                 message.kind === "reasoning" &&
                   "border-dashed text-marketing-text-muted",
@@ -105,7 +104,7 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
                       {message.attachments.map((attachment) => (
                         <div
                           key={attachment.id}
-                          className="rounded-xl border border-marketing-border bg-marketing-surface-translucent p-3"
+                          className="rounded-lg border border-marketing-border bg-marketing-surface-translucent p-3"
                         >
                           <div className="flex items-center gap-2 text-sm">
                             <AttachmentIcon mediaType={attachment.mediaType} />
@@ -132,7 +131,7 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
                 </div>
               </CardContent>
             </Card>
-            <div className="px-1 text-xs text-marketing-text-muted">
+            <div className="px-1 text-[0.7rem] text-marketing-text-muted">
               {message.time}
             </div>
           </div>
@@ -143,24 +142,23 @@ export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
         <div className="flex gap-4">
           <div
             className={cn(
-              "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-marketing-on-primary shadow-marketing-soft",
-              gradientClass,
+              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-marketing-primary text-marketing-on-primary",
             )}
           >
-            <Rocket className={iconClass} aria-hidden="true" />
+            <Bot className={iconClass} aria-hidden="true" />
           </div>
-          <div className="flex max-w-[80%] flex-col gap-1.5">
+          <div className="flex max-w-[70%] flex-col gap-1">
             <Card
               className={cn(
-                "gap-0 py-0 rounded-2xl rounded-bl-[4px]",
+                "gap-0 py-0 rounded-xl rounded-bl-[4px]",
                 bubbleBaseClass,
               )}
             >
               <CardContent className={bubbleContentClass}>
-                <div className="flex gap-1 px-4 py-3">
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-marketing-primary" />
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.2s]" />
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.4s]" />
+                <div className="flex gap-1 px-2 py-1">
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary" />
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.2s]" />
+                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.4s]" />
                 </div>
               </CardContent>
             </Card>
