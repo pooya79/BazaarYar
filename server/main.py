@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,7 +9,16 @@ from .db.session import async_engine
 
 settings = get_settings()
 
-app = FastAPI(title="BazaarYar API", docs_url="/api/docs")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        yield
+    finally:
+        await async_engine.dispose()
+
+
+app = FastAPI(title="BazaarYar API", docs_url="/api/docs", lifespan=lifespan)
 app.include_router(api_router)
 
 app.add_middleware(
@@ -17,10 +28,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("shutdown")
-async def shutdown_db() -> None:
-    await async_engine.dispose()
 
 
 @app.get("/")
