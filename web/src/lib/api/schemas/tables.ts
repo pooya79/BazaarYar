@@ -177,6 +177,24 @@ export const importStartInputSchema = z.object({
   column_overrides: z.record(z.string(), tableDataTypeSchema).default({}),
 });
 
+export const inferredColumnSchema = z.object({
+  name: z.string(),
+  source_name: z.string(),
+  data_type: tableDataTypeSchema,
+  confidence: z.number().min(0).max(1),
+  nullable: z.boolean(),
+  sample_values: z.array(z.unknown()).default([]),
+});
+
+export const inferColumnsResponseSchema = z.object({
+  source_format: importFormatSchema,
+  dataset_name_suggestion: z.string(),
+  source_columns: z.record(z.string(), z.string()),
+  row_count: z.number().int().nonnegative(),
+  inferred_columns: z.array(inferredColumnSchema),
+  columns: z.array(referenceTableColumnInputSchema),
+});
+
 export const importJobSummarySchema = z.object({
   id: z.string(),
   table_id: z.string(),
@@ -235,5 +253,7 @@ export type RowUpsert = z.infer<typeof rowUpsertSchema>;
 export type RowsBatchInput = z.infer<typeof rowsBatchInputSchema>;
 export type RowsBatchResult = z.infer<typeof rowsBatchResultSchema>;
 export type ImportStartInput = z.infer<typeof importStartInputSchema>;
+export type InferredColumn = z.infer<typeof inferredColumnSchema>;
+export type InferColumnsResponse = z.infer<typeof inferColumnsResponseSchema>;
 export type ImportJobSummary = z.infer<typeof importJobSummarySchema>;
 export type ExportInput = z.infer<typeof exportInputSchema>;

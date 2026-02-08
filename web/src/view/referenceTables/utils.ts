@@ -2,6 +2,7 @@ import type { ImportFormat, TableDataType } from "@/lib/api/schemas/tables";
 import type { ApiError } from "@/lib/api/types";
 
 export const TABLE_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/;
+export const COLUMN_IDENTIFIER_PATTERN = /^.{1,63}$/u;
 
 export const formatDateTime = (value: string): string => {
   const date = new Date(value);

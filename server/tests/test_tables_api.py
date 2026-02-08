@@ -164,6 +164,45 @@ class _TablesStore:
             },
         }
 
+    def infer_columns_from_file(
+        self,
+        *,
+        filename,
+        content,
+        source_format,
+        has_header,
+        delimiter,
+    ):
+        _ = (filename, content, source_format, has_header, delimiter)
+        return {
+            "source_format": "csv",
+            "dataset_name_suggestion": "seed",
+            "source_columns": {"campaign": "Campaign", "impressions": "Impressions"},
+            "row_count": 2,
+            "inferred_columns": [
+                {
+                    "name": "campaign",
+                    "source_name": "Campaign",
+                    "data_type": "text",
+                    "confidence": 1.0,
+                    "nullable": False,
+                    "sample_values": ["Spring"],
+                },
+                {
+                    "name": "impressions",
+                    "source_name": "Impressions",
+                    "data_type": "integer",
+                    "confidence": 1.0,
+                    "nullable": False,
+                    "sample_values": [42],
+                },
+            ],
+            "columns": [
+                {"name": "campaign", "data_type": "text", "nullable": False},
+                {"name": "impressions", "data_type": "integer", "nullable": False},
+            ],
+        }
+
     async def get_import_job(self, _session, *, table_id, job_id):
         _ = (table_id, job_id)
         return {
@@ -208,6 +247,7 @@ def _patch_store(monkeypatch):
     monkeypatch.setattr(tables_api, "query_rows", store.query_rows)
     monkeypatch.setattr(tables_api, "mutate_rows", store.mutate_rows)
     monkeypatch.setattr(tables_api, "start_import", store.start_import)
+    monkeypatch.setattr(tables_api, "infer_columns_from_file", store.infer_columns_from_file)
     monkeypatch.setattr(tables_api, "get_import_job", store.get_import_job)
     monkeypatch.setattr(tables_api, "export_rows", store.export_rows)
 
@@ -305,6 +345,15 @@ def test_tables_query_batch_import_export_endpoints(monkeypatch):
     assert import_response.json()["status"] == "completed"
     assert import_response.json()["provenance"]["dataset_name_suggestion"] == "seed"
     assert import_response.json()["inferred_columns"][0]["source_name"] == "Campaign"
+
+    infer_response = client.post(
+        "/api/tables/infer-columns",
+        files={"file": ("seed.csv", b"campaign,impressions\nSpring,42\n", "text/csv")},
+        data={"source_format": "csv", "has_header": "true"},
+    )
+    assert infer_response.status_code == 200
+    assert infer_response.json()["dataset_name_suggestion"] == "seed"
+    assert infer_response.json()["columns"][0]["name"] == "campaign"
 
     status_response = client.get(f"/api/tables/{table_id}/imports/{uuid4()}")
     assert status_response.status_code == 200

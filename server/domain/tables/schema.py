@@ -10,16 +10,21 @@ from .errors import ColumnValidationError, RowValidationError, SchemaConflictErr
 from .types import ReferenceTableColumnInput, TableDataType
 
 _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1F\x7F]")
 
 
-def validate_identifier(value: str, *, field_name: str) -> str:
+def validate_identifier(value: str, *, field_name: str, allow_unicode: bool = False) -> str:
     candidate = value.strip()
     if not candidate:
         raise ColumnValidationError(f"{field_name} cannot be empty.")
-    if not _IDENTIFIER_RE.fullmatch(candidate):
-        raise ColumnValidationError(
-            f"{field_name} must match ^[a-zA-Z_][a-zA-Z0-9_]{{0,62}}$."
-        )
+    if len(candidate) > 63:
+        raise ColumnValidationError(f"{field_name} must be at most 63 characters.")
+
+    if allow_unicode:
+        if _CONTROL_CHAR_RE.search(candidate):
+            raise ColumnValidationError(f"{field_name} cannot contain control characters.")
+    elif not _IDENTIFIER_RE.fullmatch(candidate):
+        raise ColumnValidationError(f"{field_name} must match ^[a-zA-Z_][a-zA-Z0-9_]{{0,62}}$.")
     return candidate
 
 
@@ -31,7 +36,7 @@ def normalize_columns(
 ) -> list[ReferenceTableColumnInput]:
     normalized = [
         ReferenceTableColumnInput(
-            name=validate_identifier(column.name, field_name="column name"),
+            name=validate_identifier(column.name, field_name="column name", allow_unicode=True),
             data_type=column.data_type,
             nullable=column.nullable,
             description=column.description,

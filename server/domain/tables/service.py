@@ -17,6 +17,8 @@ from .errors import ImportFormatError, QueryValidationError, RowValidationError
 from .types import (
     ExportFormat,
     ExportInput,
+    InferColumnsResponse,
+    InferredColumn,
     ImportFormat,
     ImportJobSummary,
     ImportStartInput,
@@ -34,6 +36,7 @@ from .types import (
     RowsQueryInput,
     RowsQueryResponse,
     SourceActor,
+    TableDataType,
 )
 
 
@@ -259,6 +262,61 @@ async def mutate_rows(
         import_job_id=import_job_id,
     )
     return RowsBatchResult(inserted=inserted, updated=updated, deleted=deleted)
+
+
+def infer_columns_from_file(
+    *,
+    filename: str | None,
+    content: bytes,
+    source_format: ImportFormat | None,
+    has_header: bool,
+    delimiter: str | None,
+) -> InferColumnsResponse:
+    settings = get_settings()
+    normalized_filename = (filename or "").strip()
+    if not normalized_filename:
+        raise ImportFormatError("Uploaded file is missing a filename.")
+    if not content:
+        raise ImportFormatError(f"File '{normalized_filename}' is empty.")
+    if len(content) > settings.tables_max_file_size_bytes:
+        raise ImportFormatError(
+            f"Attachment exceeds max size of {settings.tables_max_file_size_bytes} bytes."
+        )
+
+    parsed = importers.parse_payload(
+        payload=content,
+        filename=normalized_filename,
+        source_format=source_format,
+        has_header=has_header,
+        delimiter=delimiter,
+    )
+    inferred_columns = importers.infer_columns(
+        parsed.rows,
+        max_columns=settings.tables_max_columns,
+        source_columns=parsed.source_columns,
+    )
+
+    suggested_columns = schema.normalize_columns(
+        [
+            ReferenceTableColumnInput(
+                name=item["name"],
+                data_type=TableDataType(item["data_type"]),
+                nullable=bool(item["nullable"]),
+            )
+            for item in inferred_columns
+        ],
+        max_columns=settings.tables_max_columns,
+        max_cell_length=settings.tables_max_cell_length,
+    )
+
+    return InferColumnsResponse(
+        source_format=parsed.source_format,
+        dataset_name_suggestion=parsed.dataset_name_suggestion,
+        source_columns=parsed.source_columns,
+        row_count=len(parsed.rows),
+        inferred_columns=[InferredColumn.model_validate(item) for item in inferred_columns],
+        columns=suggested_columns,
+    )
 
 
 async def start_import(

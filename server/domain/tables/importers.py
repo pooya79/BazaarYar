@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import codecs
+import csv
 import io
 import json
 import math
@@ -29,6 +31,9 @@ _PANDAS_UNNAMED_HEADER_RE = re.compile(r"^Unnamed:\s*\d+$")
 _PANDAS_DUPLICATE_SUFFIX_RE = re.compile(r"^(?P<base>.+)\.(?P<index>\d+)$")
 _MAX_INFERENCE_SAMPLE = 250
 _SAMPLE_VALUE_COUNT = 3
+_CSV_DEFAULT_ENCODINGS = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
+_CSV_UTF16_ENCODINGS = ["utf-16", "utf-16-le", "utf-16-be"]
+_CSV_FALLBACK_DELIMITERS = [",", ";", "\t", "|"]
 
 
 @dataclass
@@ -40,11 +45,20 @@ class ParsedImportData:
 
 
 def _normalize_header(value: str, *, fallback_index: int) -> str:
+    # Keep dataset suggestions SQL/table-name friendly.
     candidate = _HEADER_TOKEN_RE.sub("_", value.strip()).strip("_")
     if not candidate:
         candidate = f"column_{fallback_index}"
     if not re.match(r"^[a-zA-Z_]", candidate):
         candidate = f"column_{candidate}"
+    return candidate[:63]
+
+
+def _normalize_source_header(value: str, *, fallback_index: int) -> str:
+    # Preserve source headers (including Unicode) for inferred column names.
+    candidate = value.replace("\ufeff", "").strip()
+    if not candidate:
+        candidate = f"column_{fallback_index}"
     return candidate[:63]
 
 
@@ -79,28 +93,78 @@ def _suggest_dataset_name(filename: str | None) -> str:
     return candidate or "dataset"
 
 
+def _csv_encoding_candidates(payload: bytes) -> list[str]:
+    candidates: list[str] = []
+    if payload.startswith(codecs.BOM_UTF8):
+        candidates.append("utf-8-sig")
+
+    looks_utf16 = payload.startswith(codecs.BOM_UTF16_LE) or payload.startswith(
+        codecs.BOM_UTF16_BE
+    ) or (payload[:4096].count(b"\x00") > 0)
+    if looks_utf16:
+        for encoding in _CSV_UTF16_ENCODINGS:
+            if encoding not in candidates:
+                candidates.append(encoding)
+
+    for encoding in _CSV_DEFAULT_ENCODINGS:
+        if encoding not in candidates:
+            candidates.append(encoding)
+    return candidates
+
+
+def _csv_delimiter_candidates(delimiter: str | None) -> list[str | None]:
+    if delimiter is not None:
+        return [delimiter]
+
+    candidates: list[str | None] = [None]
+    for candidate in _CSV_FALLBACK_DELIMITERS:
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
 def _load_csv_dataframe(
     payload: bytes,
     *,
     has_header: bool,
     delimiter: str | None,
 ) -> pd.DataFrame:
-    kwargs: dict[str, Any] = {
+    base_kwargs: dict[str, Any] = {
         "header": 0 if has_header else None,
         "dtype": object,
         "keep_default_na": False,
     }
-    if delimiter is None:
-        kwargs["sep"] = None
-        kwargs["engine"] = "python"
-    else:
-        kwargs["sep"] = delimiter
-        kwargs["engine"] = "python"
+    encodings = _csv_encoding_candidates(payload)
+    delimiters = _csv_delimiter_candidates(delimiter)
 
-    try:
-        return pd.read_csv(io.BytesIO(payload), **kwargs)
-    except Exception as exc:  # pragma: no cover - defensive wrappers
-        raise ImportFormatError(f"Could not parse CSV file: {exc}") from exc
+    parse_profiles: list[tuple[str, dict[str, Any]]] = [
+        ("error", {}),
+        ("skip", {}),
+        # Fallback for files with malformed quoting.
+        ("skip", {"quoting": csv.QUOTE_NONE, "escapechar": "\\"}),
+    ]
+
+    last_error: Exception | None = None
+    for on_bad_lines, extras in parse_profiles:
+        for encoding in encodings:
+            for csv_delimiter in delimiters:
+                kwargs = {
+                    **base_kwargs,
+                    "engine": "python",
+                    "encoding": encoding,
+                    "on_bad_lines": on_bad_lines,
+                    **extras,
+                }
+                kwargs["sep"] = csv_delimiter if csv_delimiter is not None else None
+                try:
+                    return pd.read_csv(io.BytesIO(payload), **kwargs)
+                except Exception as exc:  # pragma: no cover - defensive wrappers
+                    last_error = exc
+                    continue
+
+    if last_error is None:
+        last_error = ValueError("unknown CSV parser error")
+    raise ImportFormatError(f"Could not parse CSV file: {last_error}") from last_error
 
 
 def _load_json_dataframe(payload: bytes) -> pd.DataFrame:
@@ -408,7 +472,7 @@ def _dataframe_to_rows(
     if has_header:
         source_headers: list[str] = []
         for item in frame.columns:
-            raw_header = "" if item is None else str(item).strip()
+            raw_header = "" if item is None else str(item).replace("\ufeff", "").strip()
             if _PANDAS_UNNAMED_HEADER_RE.fullmatch(raw_header):
                 source_headers.append("")
                 continue
@@ -419,7 +483,7 @@ def _dataframe_to_rows(
             source_headers.append(raw_header)
         normalized_headers = _dedupe_headers(
             [
-                _normalize_header(header, fallback_index=index + 1)
+                _normalize_source_header(header, fallback_index=index + 1)
                 for index, header in enumerate(source_headers)
             ]
         )
@@ -471,9 +535,26 @@ def parse_attachment(
     if not path.exists():
         raise ImportFormatError(f"Attachment file '{attachment.id}' is missing on disk.")
 
-    resolved_format = detect_format(source_format=source_format, filename=attachment.filename)
     payload = path.read_bytes()
-    dataset_name_suggestion = _suggest_dataset_name(attachment.filename)
+    return parse_payload(
+        payload=payload,
+        filename=attachment.filename,
+        source_format=source_format,
+        has_header=has_header,
+        delimiter=delimiter,
+    )
+
+
+def parse_payload(
+    *,
+    payload: bytes,
+    filename: str | None,
+    source_format: ImportFormat | None,
+    has_header: bool,
+    delimiter: str | None,
+) -> ParsedImportData:
+    resolved_format = detect_format(source_format=source_format, filename=filename)
+    dataset_name_suggestion = _suggest_dataset_name(filename)
 
     if resolved_format == ImportFormat.CSV:
         frame = _load_csv_dataframe(payload, has_header=has_header, delimiter=delimiter)

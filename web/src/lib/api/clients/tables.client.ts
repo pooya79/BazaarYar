@@ -2,10 +2,13 @@ import { buildUrl, normalizeError } from "../http";
 import {
   type ExportInput,
   exportInputSchema,
+  type ImportFormat,
   type ImportJobSummary,
   type ImportStartInput,
+  type InferColumnsResponse,
   importJobSummarySchema,
   importStartInputSchema,
+  inferColumnsResponseSchema,
   type ReferenceTableCreateInput,
   type ReferenceTableDetail,
   type ReferenceTableSummary,
@@ -205,6 +208,46 @@ export async function startTableImport(
   });
 
   return importJobSummarySchema.parse(payload);
+}
+
+type InferTableColumnsOptions = {
+  sourceFormat?: ImportFormat;
+  hasHeader?: boolean;
+  delimiter?: string;
+  signal?: AbortSignal;
+};
+
+export async function inferTableColumns(
+  file: File,
+  options: InferTableColumnsOptions = {},
+): Promise<InferColumnsResponse> {
+  const formData = new FormData();
+  formData.set("file", file);
+  if (options.sourceFormat) {
+    formData.set("source_format", options.sourceFormat);
+  }
+  if (typeof options.hasHeader === "boolean") {
+    formData.set("has_header", String(options.hasHeader));
+  }
+  if (options.delimiter) {
+    formData.set("delimiter", options.delimiter);
+  }
+
+  const response = await fetch(buildUrl("/api/tables/infer-columns"), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+    body: formData,
+    signal: options.signal,
+  });
+
+  const payload = await parseJsonResponse(response);
+  if (!response.ok) {
+    throw normalizeError(response, payload);
+  }
+
+  return inferColumnsResponseSchema.parse(payload);
 }
 
 export async function getTableImportJob(

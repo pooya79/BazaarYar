@@ -203,6 +203,24 @@ class ImportStartInput(BaseModel):
     column_overrides: dict[str, TableDataType] = Field(default_factory=dict)
 
 
+class InferredColumn(BaseModel):
+    name: str
+    source_name: str
+    data_type: TableDataType
+    confidence: float = Field(ge=0, le=1)
+    nullable: bool
+    sample_values: list[Any] = Field(default_factory=list)
+
+
+class InferColumnsResponse(BaseModel):
+    source_format: ImportFormat
+    dataset_name_suggestion: str
+    source_columns: dict[str, str]
+    row_count: int
+    inferred_columns: list[InferredColumn]
+    columns: list[ReferenceTableColumnInput]
+
+
 class ImportJobSummary(BaseModel):
     id: str
     table_id: str

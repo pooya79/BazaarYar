@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from server.core.config import get_settings
 from server.db.session import get_db_session
 from server.domain.tables import (
     ColumnValidationError,
     ExportInput,
+    InferColumnsResponse,
+    ImportFormat,
     ImportFormatError,
     ImportJobNotFoundError,
     ImportStartInput,
@@ -29,6 +32,7 @@ from server.domain.tables import (
     create_table,
     delete_table,
     export_rows,
+    infer_columns_from_file,
     get_import_job,
     get_table,
     list_tables,
@@ -39,6 +43,23 @@ from server.domain.tables import (
 )
 
 router = APIRouter(prefix="/api/tables", tags=["tables"])
+
+
+async def _read_uploaded_file(upload: UploadFile, *, max_size: int) -> bytes:
+    total = 0
+    chunks: list[bytes] = []
+    while True:
+        chunk = await upload.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File '{upload.filename or 'upload'}' exceeds max size of {max_size} bytes.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _raise_http_error(exc: Exception) -> None:
@@ -64,6 +85,28 @@ def _raise_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     raise exc
+
+
+@router.post("/infer-columns", response_model=InferColumnsResponse)
+async def post_infer_columns(
+    file: UploadFile = File(...),
+    source_format: ImportFormat | None = Form(default=None),
+    has_header: bool = Form(default=True),
+    delimiter: str | None = Form(default=None),
+) -> InferColumnsResponse:
+    settings = get_settings()
+    content = await _read_uploaded_file(file, max_size=settings.tables_max_file_size_bytes)
+
+    try:
+        return infer_columns_from_file(
+            filename=file.filename,
+            content=content,
+            source_format=source_format,
+            has_header=has_header,
+            delimiter=(delimiter or None),
+        )
+    except Exception as exc:
+        _raise_http_error(exc)
 
 
 @router.post("", response_model=ReferenceTableDetail, status_code=status.HTTP_201_CREATED)

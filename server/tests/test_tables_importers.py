@@ -30,10 +30,10 @@ def test_parse_csv_detects_delimiter_and_explicit_delimiter(tmp_path):
 
     assert parsed.source_format == ImportFormat.CSV
     assert parsed.dataset_name_suggestion == "campaign_export"
-    assert parsed.rows[0]["Campaign_Name"] == "Spring"
-    assert parsed.rows[0]["Spend"] == 1234.5
-    assert parsed.source_columns["Campaign_Name"] == "Campaign Name"
-    assert parsed.source_columns["Spend"] == "Spend ($)"
+    assert parsed.rows[0]["Campaign Name"] == "Spring"
+    assert parsed.rows[0]["Spend ($)"] == 1234.5
+    assert parsed.source_columns["Campaign Name"] == "Campaign Name"
+    assert parsed.source_columns["Spend ($)"] == "Spend ($)"
 
     explicit_path = tmp_path / "campaign_pipe.csv"
     explicit_path.write_text("Campaign|Impressions\nSpring|1,200\n", encoding="utf-8")
@@ -47,6 +47,42 @@ def test_parse_csv_detects_delimiter_and_explicit_delimiter(tmp_path):
     assert explicit.rows[0]["Impressions"] == 1200
 
 
+def test_parse_csv_supports_utf16_encoding(tmp_path):
+    path = tmp_path / "utf16_export.csv"
+    path.write_text("Campaign,Impressions\nSpring,1200\n", encoding="utf-16")
+
+    parsed = importers.parse_attachment(
+        _attachment(path),
+        source_format=ImportFormat.CSV,
+        has_header=True,
+        delimiter=",",
+    )
+
+    assert parsed.rows[0]["Campaign"] == "Spring"
+    assert parsed.rows[0]["Impressions"] == 1200
+
+
+def test_parse_csv_skips_bad_lines_when_rows_have_too_many_fields(tmp_path):
+    path = tmp_path / "broken_rows.csv"
+    path.write_text(
+        "campaign,impressions\nSpring,1200\nBroken,1300,extra\nSummer,900\n",
+        encoding="utf-8",
+    )
+
+    parsed = importers.parse_attachment(
+        _attachment(path),
+        source_format=ImportFormat.CSV,
+        has_header=True,
+        delimiter=",",
+    )
+
+    assert len(parsed.rows) == 2
+    assert parsed.rows[0]["campaign"] == "Spring"
+    assert parsed.rows[1]["campaign"] == "Summer"
+    assert parsed.rows[0]["impressions"] == 1200
+    assert parsed.rows[1]["impressions"] == 900
+
+
 def test_parse_csv_normalizes_headers_and_dedupes(tmp_path):
     path = tmp_path / "dup_headers.csv"
     path.write_text("Campaign Name,Campaign Name,\nA,B,C\n", encoding="utf-8")
@@ -58,11 +94,11 @@ def test_parse_csv_normalizes_headers_and_dedupes(tmp_path):
         delimiter=",",
     )
 
-    assert parsed.rows[0]["Campaign_Name"] == "A"
-    assert parsed.rows[0]["Campaign_Name_2"] == "B"
+    assert parsed.rows[0]["Campaign Name"] == "A"
+    assert parsed.rows[0]["Campaign Name_2"] == "B"
     assert parsed.rows[0]["column_3"] == "C"
-    assert parsed.source_columns["Campaign_Name"] == "Campaign Name"
-    assert parsed.source_columns["Campaign_Name_2"] == "Campaign Name"
+    assert parsed.source_columns["Campaign Name"] == "Campaign Name"
+    assert parsed.source_columns["Campaign Name_2"] == "Campaign Name"
     assert parsed.source_columns["column_3"] == "column_3"
 
 
@@ -87,11 +123,27 @@ def test_parse_json_flattens_nested_records(tmp_path):
     )
 
     row = parsed.rows[0]
-    assert row["campaign_name"] == "Spring"
-    assert row["metrics_spend"] == 1200
-    assert row["metrics_ctr"] == 0.12
+    assert row["campaign.name"] == "Spring"
+    assert row["metrics.spend"] == 1200
+    assert row["metrics.ctr"] == 0.12
     assert row["tags"] == ["retargeting", "search"]
-    assert parsed.source_columns["campaign_name"] == "campaign.name"
+    assert parsed.source_columns["campaign.name"] == "campaign.name"
+
+
+def test_parse_csv_preserves_unicode_headers(tmp_path):
+    path = tmp_path / "persian_headers.csv"
+    path.write_text("لینک,نام,تعداد کلیک\nx,محصول,1\n", encoding="utf-8")
+
+    parsed = importers.parse_attachment(
+        _attachment(path),
+        source_format=ImportFormat.CSV,
+        has_header=True,
+        delimiter=",",
+    )
+
+    assert parsed.rows[0]["لینک"] == "x"
+    assert parsed.rows[0]["نام"] == "محصول"
+    assert parsed.rows[0]["تعداد کلیک"] == 1
 
 
 def test_parse_xlsx_reads_first_sheet_with_pandas(tmp_path):

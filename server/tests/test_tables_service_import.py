@@ -196,3 +196,58 @@ def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
         "impressions": "Impressions",
     }
     assert response["inferred_columns"][0]["source_name"] == "Campaign"
+
+
+def test_infer_columns_from_file_returns_typed_suggestions(monkeypatch):
+    settings = SimpleNamespace(
+        tables_max_columns=150,
+        tables_max_file_size_bytes=10_000_000,
+        tables_max_cell_length=4_000,
+    )
+    monkeypatch.setattr(tables_service, "get_settings", lambda: settings)
+
+    parsed = ParsedImportData(
+        source_format=ImportFormat.CSV,
+        rows=[{"campaign": "Spring", "impressions": "1,200"}],
+        dataset_name_suggestion="campaigns",
+        source_columns={"campaign": "Campaign", "impressions": "Impressions"},
+    )
+    monkeypatch.setattr(tables_service.importers, "parse_payload", lambda **_: parsed)
+    monkeypatch.setattr(
+        tables_service.importers,
+        "infer_columns",
+        lambda *args, **kwargs: [
+            {
+                "name": "campaign",
+                "source_name": "Campaign",
+                "data_type": "text",
+                "confidence": 1.0,
+                "nullable": False,
+                "sample_values": ["Spring"],
+            },
+            {
+                "name": "impressions",
+                "source_name": "Impressions",
+                "data_type": "integer",
+                "confidence": 1.0,
+                "nullable": False,
+                "sample_values": [1200],
+            },
+        ],
+    )
+
+    response = tables_service.infer_columns_from_file(
+        filename="campaigns.csv",
+        content=b"campaign,impressions\nSpring,1200\n",
+        source_format=ImportFormat.CSV,
+        has_header=True,
+        delimiter=",",
+    )
+
+    assert response.source_format == ImportFormat.CSV
+    assert response.dataset_name_suggestion == "campaigns"
+    assert response.row_count == 1
+    assert response.columns[0].name == "campaign"
+    assert response.columns[0].data_type == TableDataType.TEXT
+    assert response.columns[1].name == "impressions"
+    assert response.columns[1].data_type == TableDataType.INTEGER
