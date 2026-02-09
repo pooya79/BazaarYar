@@ -1,6 +1,8 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server test-server web db db-down db-migrate db-downgrade sandbox-image
+.PHONY: install install-server install-web dev server test-server web db db-down db-migrate db-downgrade sandbox-image clear-dev-conversations
+
+ARGS ?=
 
 install: install-server install-web
 
@@ -36,3 +38,6 @@ db-downgrade:
 
 sandbox-image:
 	docker build -t bazaaryar-python-sandbox:latest infra/sandbox
+
+clear-dev-conversations:
+	PYTHONPATH=. uv run --project server python scripts/clear_dev_conversations.py $(ARGS)
