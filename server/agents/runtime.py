@@ -7,8 +7,10 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain.tools import tool
 
+from server.agents.python_sandbox_tool import PYTHON_SANDBOX_TOOLS
 from server.agents.usage import extract_usage
 from server.agents.table_tools import TABLE_TOOLS
+from server.core.config import get_settings
 
 SYSTEM_PROMPT = (
     "You are BazaarYar, an assistant that is concise, practical, and transparent. "
@@ -32,7 +34,18 @@ def utc_time() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat() + "Z"
 
 # TODO: for now remove TABLE_TOOLS, we will add them back later.
-TOOLS = [add_numbers, reverse_text, utc_time]
+_BASE_TOOLS = [add_numbers, reverse_text, utc_time]
+
+
+def _build_tools() -> list[Any]:
+    settings = get_settings()
+    tools = list(_BASE_TOOLS)
+    if settings.sandbox_tool_enabled:
+        tools.extend(PYTHON_SANDBOX_TOOLS)
+    return tools
+
+
+TOOLS = _build_tools()
 
 
 def build_agent_runtime(model: Any):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, TypeAdapter
@@ -32,10 +33,29 @@ class ToolCallEvent(BaseModel):
     call_type: str | None = None
 
 
+class ToolResultArtifact(BaseModel):
+    id: str
+    filename: str
+    content_type: str
+    media_type: Literal["image", "pdf", "text", "spreadsheet", "binary"]
+    size_bytes: int
+    download_url: str
+    preview_text: str | None = None
+    extraction_note: str | None = None
+
+
 class ToolResultEvent(BaseModel):
     type: Literal["tool_result"] = "tool_result"
     tool_call_id: str | None = None
     content: str
+    artifacts: list[ToolResultArtifact] | None = None
+
+class SandboxStatusEvent(BaseModel):
+    type: Literal["sandbox_status"] = "sandbox_status"
+    run_id: str
+    stage: str
+    message: str
+    timestamp: datetime
 
 
 class FinalEvent(BaseModel):
@@ -52,6 +72,7 @@ StreamEvent = Union[
     ToolCallDeltaEvent,
     ToolCallEvent,
     ToolResultEvent,
+    SandboxStatusEvent,
     FinalEvent,
 ]
 
@@ -64,6 +85,6 @@ def stream_event_schema() -> dict[str, Any]:
 
 
 def encode_sse(event: StreamEvent) -> str:
-    payload = event.model_dump()
+    payload = event.model_dump(mode="json")
     event_name = payload["type"]
     return f"event: {event_name}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n"

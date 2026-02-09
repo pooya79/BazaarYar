@@ -230,6 +230,64 @@ async def save_assistant_message(
     return message
 
 
+async def save_assistant_message_with_attachments(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID | str,
+    content: str,
+    attachment_ids: Sequence[str],
+    token_estimate: int | None = None,
+    tokenizer_name: str = DEFAULT_TOKENIZER_NAME,
+    message_kind: str = "tool_result",
+    usage_json: dict[str, Any] | None = None,
+) -> Message:
+    conversation = await ensure_conversation(session, conversation_id)
+    clean_content = content.strip()
+    message = Message(
+        conversation_id=conversation.id,
+        role="assistant",
+        content=clean_content,
+        token_estimate=token_estimate if token_estimate is not None else estimate_tokens(clean_content),
+        tokenizer_name=tokenizer_name,
+        message_kind=message_kind,
+        usage_json=usage_json,
+    )
+    session.add(message)
+    await session.flush()
+
+    clean_ids = [item.strip() for item in attachment_ids if item.strip()]
+    if clean_ids:
+        attachment_uuid_ids = [to_uuid(item) for item in clean_ids]
+        stmt = select(Attachment).where(Attachment.id.in_(attachment_uuid_ids))
+        result = await session.execute(stmt)
+        attachments = {str(item.id): item for item in result.scalars().all()}
+        missing = [item for item in clean_ids if item not in attachments]
+        if missing:
+            raise AttachmentNotFoundError(f"Attachment(s) not found: {', '.join(missing)}")
+
+        for index, attachment_id in enumerate(clean_ids):
+            session.add(
+                MessageAttachment(
+                    message_id=message.id,
+                    attachment_id=attachments[attachment_id].id,
+                    position=index,
+                )
+            )
+
+    conversation.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+
+    stmt = (
+        select(Message)
+        .where(Message.id == message.id)
+        .options(
+            selectinload(Message.attachment_links).selectinload(MessageAttachment.attachment),
+        )
+    )
+    refreshed = (await session.execute(stmt)).scalar_one()
+    return refreshed
+
+
 async def list_conversations(
     session: AsyncSession,
     *,

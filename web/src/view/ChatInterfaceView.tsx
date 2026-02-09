@@ -20,8 +20,10 @@ import {
   getAgentConversation,
   streamAgent,
 } from "@/lib/api/clients/agent.client";
+import { buildUrl } from "@/lib/api/http";
 import {
   formatMetaBlock,
+  formatSandboxStatus,
   formatTime,
   formatToolCall,
   formatToolDelta,
@@ -58,6 +60,7 @@ export function ChatInterfaceView() {
       number,
       { id: number; name?: string; args?: string; callId?: string }
     >(),
+    sandboxStatus: new Map<string, number>(),
   });
   const hasStreamedRef = useRef(false);
 
@@ -197,6 +200,7 @@ export function ChatInterfaceView() {
       textId: null,
       reasoningId: null,
       toolDelta: new Map(),
+      sandboxStatus: new Map(),
     };
     hasStreamedRef.current = false;
   }, []);
@@ -241,6 +245,26 @@ export function ChatInterfaceView() {
       },
     ]);
     streamStateRef.current[key] = id;
+    return id;
+  };
+
+  const ensureSandboxStatusMessage = (runId: string, initialText: string) => {
+    const current = streamStateRef.current.sandboxStatus.get(runId);
+    if (current !== undefined) {
+      return current;
+    }
+    const id = messageId.current++;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id,
+        sender: "bot",
+        text: initialText,
+        time: formatTime(new Date()),
+        kind: "meta",
+      },
+    ]);
+    streamStateRef.current.sandboxStatus.set(runId, id);
     return id;
   };
 
@@ -356,7 +380,34 @@ export function ChatInterfaceView() {
             return;
           }
           if (event.type === "tool_result") {
-            addMessage(formatToolResult(event), "bot", "tool_result");
+            const attachments =
+              event.artifacts?.map((artifact) => ({
+                id: artifact.id,
+                filename: artifact.filename,
+                contentType: artifact.content_type,
+                mediaType: artifact.media_type,
+                sizeBytes: artifact.size_bytes,
+                previewText: artifact.preview_text,
+                extractionNote: artifact.extraction_note,
+                localPreviewUrl:
+                  artifact.media_type === "image"
+                    ? buildUrl(artifact.download_url)
+                    : undefined,
+              })) ?? [];
+            addMessage(
+              formatToolResult(event),
+              "bot",
+              "tool_result",
+              attachments.length > 0 ? attachments : undefined,
+            );
+            return;
+          }
+          if (event.type === "sandbox_status") {
+            const id = ensureSandboxStatusMessage(
+              event.run_id,
+              formatSandboxStatus(event),
+            );
+            updateMessageText(id, formatSandboxStatus(event));
             return;
           }
           if (event.type === "final") {

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -13,16 +16,20 @@ from server.agents.attachments import (
     build_attachment_message_parts_async,
     build_attachment_message_parts_for_items,
     from_db_attachment,
+    load_attachments_for_ids,
     resolve_storage_path,
     store_uploaded_file,
 )
+from server.agents.event_bus import AgentRequestContext, bind_event_sink, bind_request_context
 from server.agents.openailike_agent import extract_trace, get_agent, split_ai_content
 from server.agents.streaming_schema import (
     FinalEvent,
     ReasoningDeltaEvent,
+    SandboxStatusEvent,
     TextDeltaEvent,
     ToolCallDeltaEvent,
     ToolCallEvent,
+    ToolResultArtifact,
     ToolResultEvent,
     encode_sse,
     stream_event_schema,
@@ -39,6 +46,7 @@ from server.domain.chat_store import (
     create_conversation,
     estimate_tokens,
     save_assistant_message,
+    save_assistant_message_with_attachments,
     save_uploaded_attachments,
     save_user_message_with_attachments,
 )
@@ -119,11 +127,112 @@ def _format_tool_call(event: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_tool_result(message: ToolMessage) -> str:
+def _parse_tool_result_payload(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _artifact_attachment_ids(payload: dict[str, Any] | None) -> list[str]:
+    if payload is None:
+        return []
+    raw = payload.get("artifact_attachment_ids")
+    if not isinstance(raw, list):
+        return []
+    output: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            output.append(item.strip())
+    return output
+
+
+async def _tool_result_artifacts(
+    session: AsyncSession,
+    *,
+    attachment_ids: list[str],
+) -> list[ToolResultArtifact]:
+    if not attachment_ids:
+        return []
+
+    loaded: list[StoredAttachment] = []
+    if hasattr(session, "execute"):
+        try:
+            loaded = await load_attachments_for_ids(
+                session,
+                attachment_ids,
+                allow_json_fallback=False,
+            )
+        except HTTPException:
+            return []
+    else:  # Test doubles may only implement session.get().
+        for attachment_id in attachment_ids:
+            try:
+                file_uuid = parse_uuid(attachment_id, field_name="attachment_id")
+            except HTTPException:
+                continue
+            row = await session.get(Attachment, file_uuid)
+            if row is None:
+                continue
+            loaded.append(
+                StoredAttachment(
+                    id=str(row.id),
+                    filename=row.filename,
+                    content_type=row.content_type,
+                    media_type=row.media_type,
+                    size_bytes=row.size_bytes,
+                    storage_path=row.storage_path,
+                    preview_text=row.preview_text,
+                    extraction_note=row.extraction_note,
+                    created_at=row.created_at,
+                )
+            )
+
+    return [
+        ToolResultArtifact(
+            id=item.id,
+            filename=item.filename,
+            content_type=item.content_type,
+            media_type=item.media_type,
+            size_bytes=item.size_bytes,
+            preview_text=item.preview_text,
+            extraction_note=item.extraction_note,
+            download_url=f"/api/agent/attachments/{item.id}/content",
+        )
+        for item in loaded
+    ]
+
+
+def _format_tool_result(message: ToolMessage, *, payload: dict[str, Any] | None = None) -> str:
     lines: list[str] = []
     if message.tool_call_id:
         lines.append(f"tool_call_id: {message.tool_call_id}")
-    lines.append(str(message.content))
+    if payload is None:
+        lines.append(str(message.content))
+        return "\n".join(lines)
+
+    status = payload.get("status")
+    summary = payload.get("summary")
+    stdout_tail = payload.get("stdout_tail")
+    stderr_tail = payload.get("stderr_tail")
+    if status:
+        lines.append(f"status: {status}")
+    if summary:
+        lines.append(f"summary: {summary}")
+    if stdout_tail:
+        lines.append("stdout:")
+        lines.append(str(stdout_tail))
+    if stderr_tail:
+        lines.append("stderr:")
+        lines.append(str(stderr_tail))
+    if not lines:
+        lines.append(str(message.content))
     return "\n".join(lines)
 
 
@@ -331,130 +440,204 @@ async def stream_agent(
     model_messages = [_to_langchain_message(message) for message in context_messages]
 
     async def _event_stream():
-        agent = get_agent()
-        final_ai: AIMessage | None = None
+        queue: asyncio.Queue[Any | None] = asyncio.Queue()
+        producer_error: Exception | None = None
 
-        async for stream_mode, data in agent.astream(
-            {"messages": model_messages},
-            stream_mode=["messages", "updates"],
-        ):
-            if stream_mode == "messages":
-                token, _metadata = data
-                if isinstance(token, AIMessageChunk):
-                    extra = getattr(token, "additional_kwargs", None) or {}
-                    reasoning_chunk = getattr(token, "reasoning_content", None) or extra.get(
-                        "reasoning_content"
+        async def _push(event: Any) -> None:
+            await queue.put(event)
+
+        async def _on_sandbox_status(payload: Any) -> None:
+            await _push(
+                SandboxStatusEvent(
+                    run_id=payload.run_id,
+                    stage=payload.stage,
+                    message=payload.message,
+                    timestamp=payload.timestamp,
+                )
+            )
+
+        async def _producer() -> None:
+            nonlocal producer_error
+            agent = get_agent()
+            final_ai: AIMessage | None = None
+            request_context = AgentRequestContext(
+                latest_user_message=user_message,
+                latest_user_attachment_ids=tuple(attachment_ids),
+            )
+
+            try:
+                with bind_event_sink(_on_sandbox_status), bind_request_context(request_context):
+                    async for stream_mode, data in agent.astream(
+                        {"messages": model_messages},
+                        stream_mode=["messages", "updates"],
+                    ):
+                        if stream_mode == "messages":
+                            token, _metadata = data
+                            if isinstance(token, AIMessageChunk):
+                                extra = getattr(token, "additional_kwargs", None) or {}
+                                reasoning_chunk = getattr(
+                                    token,
+                                    "reasoning_content",
+                                    None,
+                                ) or extra.get("reasoning_content")
+                                if reasoning_chunk:
+                                    await _push(ReasoningDeltaEvent(content=str(reasoning_chunk)))
+                                for chunk in token.tool_call_chunks:
+                                    await _push(
+                                        ToolCallDeltaEvent(
+                                            id=chunk.get("id"),
+                                            name=chunk.get("name"),
+                                            args=chunk.get("args"),
+                                            index=chunk.get("index"),
+                                        )
+                                    )
+                                content_blocks = getattr(token, "content_blocks", None) or token.content
+                                if isinstance(content_blocks, list):
+                                    for raw_block in content_blocks:
+                                        if not isinstance(raw_block, dict):
+                                            continue
+                                        block = raw_block
+                                        if raw_block.get("type") == "non_standard":
+                                            nested = raw_block.get("value")
+                                            if isinstance(nested, dict):
+                                                block = nested
+                                        block_type = block.get("type")
+                                        if block_type in {"thinking", "reasoning", "summary"}:
+                                            value = (
+                                                block.get("thinking")
+                                                or block.get("reasoning")
+                                                or block.get("summary")
+                                            )
+                                            if value:
+                                                await _push(ReasoningDeltaEvent(content=str(value)))
+                                        if block_type in {"text", "output_text"}:
+                                            value = block.get("text") or block.get("output_text")
+                                            if value:
+                                                await _push(TextDeltaEvent(content=str(value)))
+                                elif isinstance(content_blocks, str) and content_blocks:
+                                    await _push(TextDeltaEvent(content=content_blocks))
+                        elif stream_mode == "updates":
+                            for _, update in data.items():
+                                msg_list = update.get("messages", [])
+                                if not msg_list:
+                                    continue
+                                msg = msg_list[-1]
+                                if isinstance(msg, AIMessage):
+                                    if msg.tool_calls:
+                                        for call in msg.tool_calls:
+                                            await _push(
+                                                ToolCallEvent(
+                                                    id=call.get("id"),
+                                                    name=call.get("name"),
+                                                    args=call.get("args", {}),
+                                                    call_type=call.get("type"),
+                                                )
+                                            )
+                                            await save_assistant_message(
+                                                session,
+                                                conversation_id=conversation.id,
+                                                content=_format_tool_call(call),
+                                                message_kind="tool_call",
+                                            )
+                                    final_ai = msg
+                                elif isinstance(msg, ToolMessage):
+                                    payload = _parse_tool_result_payload(msg.content)
+                                    result_content = _format_tool_result(msg, payload=payload)
+                                    artifact_ids = _artifact_attachment_ids(payload)
+                                    artifacts = await _tool_result_artifacts(
+                                        session,
+                                        attachment_ids=artifact_ids,
+                                    )
+
+                                    await _push(
+                                        ToolResultEvent(
+                                            tool_call_id=msg.tool_call_id,
+                                            content=result_content,
+                                            artifacts=artifacts or None,
+                                        )
+                                    )
+                                    if artifact_ids:
+                                        try:
+                                            await save_assistant_message_with_attachments(
+                                                session,
+                                                conversation_id=conversation.id,
+                                                content=result_content,
+                                                attachment_ids=artifact_ids,
+                                                message_kind="tool_result",
+                                            )
+                                        except AttachmentNotFoundError:
+                                            await save_assistant_message(
+                                                session,
+                                                conversation_id=conversation.id,
+                                                content=result_content,
+                                                message_kind="tool_result",
+                                            )
+                                    else:
+                                        await save_assistant_message(
+                                            session,
+                                            conversation_id=conversation.id,
+                                            content=result_content,
+                                            message_kind="tool_result",
+                                        )
+
+                if final_ai is not None:
+                    usage = extract_usage(final_ai)
+                    response_meta = getattr(final_ai, "response_metadata", None)
+                    _, final_text_parts = split_ai_content(final_ai)
+                    final_text = "".join(final_text_parts).strip()
+
+                    await save_assistant_message(
+                        session,
+                        conversation_id=conversation.id,
+                        content=final_text or "[empty assistant response]",
+                        token_estimate=estimate_tokens(final_text or ""),
+                        usage_json=usage if isinstance(usage, dict) else None,
                     )
-                    if reasoning_chunk:
-                        yield encode_sse(ReasoningDeltaEvent(content=str(reasoning_chunk)))
-                    for chunk in token.tool_call_chunks:
-                        yield encode_sse(
-                            ToolCallDeltaEvent(
-                                id=chunk.get("id"),
-                                name=chunk.get("name"),
-                                args=chunk.get("args"),
-                                index=chunk.get("index"),
-                            )
-                        )
-                    content_blocks = getattr(token, "content_blocks", None) or token.content
-                    if isinstance(content_blocks, list):
-                        for raw_block in content_blocks:
-                            if not isinstance(raw_block, dict):
-                                continue
-                            block = raw_block
-                            if raw_block.get("type") == "non_standard":
-                                nested = raw_block.get("value")
-                                if isinstance(nested, dict):
-                                    block = nested
-                            block_type = block.get("type")
-                            if block_type in {"thinking", "reasoning", "summary"}:
-                                value = (
-                                    block.get("thinking")
-                                    or block.get("reasoning")
-                                    or block.get("summary")
-                                )
-                                if value:
-                                    yield encode_sse(ReasoningDeltaEvent(content=str(value)))
-                            if block_type in {"text", "output_text"}:
-                                value = block.get("text") or block.get("output_text")
-                                if value:
-                                    yield encode_sse(TextDeltaEvent(content=str(value)))
-                    elif isinstance(content_blocks, str) and content_blocks:
-                        yield encode_sse(TextDeltaEvent(content=content_blocks))
-            elif stream_mode == "updates":
-                for _, update in data.items():
-                    msg_list = update.get("messages", [])
-                    if not msg_list:
-                        continue
-                    msg = msg_list[-1]
-                    if isinstance(msg, AIMessage):
-                        if msg.tool_calls:
-                            for call in msg.tool_calls:
-                                event = ToolCallEvent(
-                                    id=call.get("id"),
-                                    name=call.get("name"),
-                                    args=call.get("args", {}),
-                                    call_type=call.get("type"),
-                                )
-                                yield encode_sse(event)
-                                await save_assistant_message(
-                                    session,
-                                    conversation_id=conversation.id,
-                                    content=_format_tool_call(call),
-                                    message_kind="tool_call",
-                                )
-                        final_ai = msg
-                    elif isinstance(msg, ToolMessage):
-                        event = ToolResultEvent(
-                            tool_call_id=msg.tool_call_id,
-                            content=str(msg.content),
-                        )
-                        yield encode_sse(event)
+
+                    usage_text = _format_meta_block("usage", usage)
+                    if usage_text:
                         await save_assistant_message(
                             session,
                             conversation_id=conversation.id,
-                            content=_format_tool_result(msg),
-                            message_kind="tool_result",
+                            content=usage_text,
+                            message_kind="meta",
+                        )
+                    metadata_text = _format_meta_block("response_metadata", response_meta)
+                    if metadata_text:
+                        await save_assistant_message(
+                            session,
+                            conversation_id=conversation.id,
+                            content=metadata_text,
+                            message_kind="meta",
                         )
 
-        if final_ai is not None:
-            usage = extract_usage(final_ai)
-            response_meta = getattr(final_ai, "response_metadata", None)
-            _, final_text_parts = split_ai_content(final_ai)
-            final_text = "".join(final_text_parts).strip()
+                    await _push(
+                        FinalEvent(
+                            output_text=final_text,
+                            usage=usage,
+                            response_metadata=response_meta,
+                            conversation_id=str(conversation.id),
+                        )
+                    )
+            except Exception as exc:  # pragma: no cover - defensive streaming guard
+                producer_error = exc
+            finally:
+                await queue.put(None)
 
-            await save_assistant_message(
-                session,
-                conversation_id=conversation.id,
-                content=final_text or "[empty assistant response]",
-                token_estimate=estimate_tokens(final_text or ""),
-                usage_json=usage if isinstance(usage, dict) else None,
-            )
+        producer_task = asyncio.create_task(_producer())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield encode_sse(event)
+        finally:
+            if not producer_task.done():
+                producer_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await producer_task
 
-            usage_text = _format_meta_block("usage", usage)
-            if usage_text:
-                await save_assistant_message(
-                    session,
-                    conversation_id=conversation.id,
-                    content=usage_text,
-                    message_kind="meta",
-                )
-            metadata_text = _format_meta_block("response_metadata", response_meta)
-            if metadata_text:
-                await save_assistant_message(
-                    session,
-                    conversation_id=conversation.id,
-                    content=metadata_text,
-                    message_kind="meta",
-                )
-
-            yield encode_sse(
-                FinalEvent(
-                    output_text=final_text,
-                    usage=usage,
-                    response_metadata=response_meta,
-                    conversation_id=str(conversation.id),
-                )
-            )
+        if producer_error is not None:
+            raise producer_error
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")

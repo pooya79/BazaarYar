@@ -143,6 +143,42 @@ class Settings(BaseSettings):
         default=4_000,
         validation_alias="TABLES_MAX_CELL_LENGTH",
     )
+    sandbox_tool_enabled: bool = Field(
+        default=False,
+        validation_alias="SANDBOX_TOOL_ENABLED",
+    )
+    sandbox_docker_image: str = Field(
+        default="bazaaryar-python-sandbox:latest",
+        validation_alias="SANDBOX_DOCKER_IMAGE",
+    )
+    sandbox_docker_bin: str = Field(
+        default="docker",
+        validation_alias="SANDBOX_DOCKER_BIN",
+    )
+    sandbox_max_runtime_seconds: int = Field(
+        default=90,
+        validation_alias="SANDBOX_MAX_RUNTIME_SECONDS",
+    )
+    sandbox_max_memory_mb: int = Field(
+        default=1024,
+        validation_alias="SANDBOX_MAX_MEMORY_MB",
+    )
+    sandbox_max_cpu: float = Field(
+        default=1.0,
+        validation_alias="SANDBOX_MAX_CPU",
+    )
+    sandbox_max_artifacts: int = Field(
+        default=8,
+        validation_alias="SANDBOX_MAX_ARTIFACTS",
+    )
+    sandbox_max_artifact_bytes: int = Field(
+        default=10_485_760,
+        validation_alias="SANDBOX_MAX_ARTIFACT_BYTES",
+    )
+    sandbox_max_code_chars: int = Field(
+        default=20_000,
+        validation_alias="SANDBOX_MAX_CODE_CHARS",
+    )
 
     @computed_field
     @property

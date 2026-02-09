@@ -111,6 +111,29 @@ export const toolResultSchema = z.object({
   type: z.literal("tool_result"),
   tool_call_id: z.string().nullable().optional(),
   content: z.string(),
+  artifacts: z
+    .array(
+      z.object({
+        id: z.string(),
+        filename: z.string(),
+        content_type: z.string(),
+        media_type: attachmentMediaTypeSchema,
+        size_bytes: z.number().int().nonnegative(),
+        download_url: z.string(),
+        preview_text: z.string().nullable().optional(),
+        extraction_note: z.string().nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
+});
+
+export const sandboxStatusSchema = z.object({
+  type: z.literal("sandbox_status"),
+  run_id: z.string(),
+  stage: z.string(),
+  message: z.string(),
+  timestamp: z.string(),
 });
 
 export const finalSchema = z.object({
@@ -127,5 +150,6 @@ export const streamEventSchema = z.discriminatedUnion("type", [
   toolCallDeltaSchema,
   toolCallSchema,
   toolResultSchema,
+  sandboxStatusSchema,
   finalSchema,
 ]);

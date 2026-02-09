@@ -79,11 +79,27 @@ export function formatToolCall(event: {
 export function formatToolResult(event: {
   tool_call_id?: string | null;
   content: string;
+  artifacts?: Array<{ filename: string; media_type: string }> | null;
 }) {
   const lines: string[] = [];
   if (event.tool_call_id) {
     lines.push(`tool_call_id: ${event.tool_call_id}`);
   }
   lines.push(event.content);
+  if (event.artifacts && event.artifacts.length > 0) {
+    lines.push("");
+    lines.push("artifacts:");
+    for (const artifact of event.artifacts) {
+      lines.push(`- ${artifact.filename} (${artifact.media_type})`);
+    }
+  }
   return lines.join("\n");
+}
+
+export function formatSandboxStatus(event: {
+  run_id: string;
+  stage: string;
+  message: string;
+}) {
+  return `sandbox ${event.run_id} | ${event.stage}\n${event.message}`;
 }

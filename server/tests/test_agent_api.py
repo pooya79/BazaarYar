@@ -154,6 +154,29 @@ class _MemoryStore:
             attachment_ids=[],
         )
 
+    async def save_assistant_message_with_attachments(
+        self,
+        _session,
+        *,
+        conversation_id,
+        content,
+        attachment_ids,
+        token_estimate=0,
+        tokenizer_name="char4_approx_v1",
+        message_kind="tool_result",
+        usage_json=None,
+    ):
+        return self._save_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=content,
+            message_kind=message_kind,
+            token_estimate=token_estimate,
+            tokenizer_name=tokenizer_name,
+            usage_json=usage_json,
+            attachment_ids=attachment_ids,
+        )
+
     def _save_message(
         self,
         *,
@@ -300,6 +323,11 @@ def _patch_memory_store(monkeypatch):
         store.save_user_message_with_attachments,
     )
     monkeypatch.setattr(agents_api, "save_assistant_message", store.save_assistant_message)
+    monkeypatch.setattr(
+        agents_api,
+        "save_assistant_message_with_attachments",
+        store.save_assistant_message_with_attachments,
+    )
     monkeypatch.setattr(agents_api, "build_context_window_for_model", store.build_context_window_for_model)
     monkeypatch.setattr(conversations_api, "list_conversations", store.list_conversations)
     monkeypatch.setattr(conversations_api, "get_conversation_summary", store.get_conversation_summary)
@@ -406,6 +434,138 @@ def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatc
     assert messages[3]["message_kind"] == "normal"
 
 
+def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
+    store = _patch_memory_store(monkeypatch)
+
+    artifact = _fake_uploaded_attachment(str(uuid4()))
+
+    import asyncio
+
+    asyncio.run(store.save_uploaded_attachments(None, [artifact]))
+
+    class _ArtifactStubAgent:
+        async def ainvoke(self, payload):
+            return {"messages": payload["messages"]}
+
+        async def astream(self, payload, stream_mode=("messages", "updates")):
+            tool_call = {
+                "id": "call-plot",
+                "name": "run_python_analysis",
+                "args": {"code": "print('plot')"},
+                "type": "tool_call",
+            }
+            ai_msg = AIMessage(
+                content=[{"type": "text", "text": "Generating a plot."}],
+                tool_calls=[tool_call],
+                usage_metadata={"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
+                response_metadata={"model_name": "gpt-4.1-mini"},
+            )
+            tool_msg = ToolMessage(
+                content=json.dumps(
+                    {
+                        "status": "succeeded",
+                        "summary": "Sandbox execution completed.",
+                        "artifact_attachment_ids": [artifact.id],
+                        "stdout_tail": "ok",
+                        "stderr_tail": "",
+                    }
+                ),
+                tool_call_id="call-plot",
+            )
+            final_msg = AIMessage(
+                content=[{"type": "text", "text": "Done."}],
+                usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                response_metadata={"model_name": "gpt-4.1-mini"},
+            )
+            if "messages" in stream_mode:
+                from langchain_core.messages import AIMessageChunk
+
+                chunk = AIMessageChunk(content=[{"type": "text", "text": "Done"}])
+                yield ("messages", (chunk, {"langgraph_node": "model"}))
+            if "updates" in stream_mode:
+                yield ("updates", {"model": {"messages": [*payload["messages"], ai_msg]}})
+                yield ("updates", {"tools": {"messages": [tool_msg]}})
+                yield ("updates", {"model": {"messages": [final_msg]}})
+
+    monkeypatch.setattr(agents_api, "get_agent", lambda: _ArtifactStubAgent())
+    client = TestClient(app)
+
+    tool_result_payload = None
+    final_payload = None
+    with client.stream(
+        "POST",
+        "/api/agent/stream",
+        json={"message": "Please run python analysis and plot this"},
+    ) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            payload = json.loads(line.removeprefix("data: "))
+            if payload["type"] == "tool_result":
+                tool_result_payload = payload
+            if payload["type"] == "final":
+                final_payload = payload
+
+    assert tool_result_payload is not None
+    assert tool_result_payload["artifacts"][0]["id"] == artifact.id
+    assert final_payload is not None
+
+    conversation_id = final_payload["conversation_id"]
+    reload_response = client.get(f"/api/conversations/{conversation_id}")
+    assert reload_response.status_code == 200
+    messages = reload_response.json()["messages"]
+    tool_result_message = next(item for item in messages if item["message_kind"] == "tool_result")
+    assert tool_result_message["attachments"][0]["id"] == artifact.id
+
+
+def test_stream_emits_sandbox_status_events(monkeypatch):
+    _patch_memory_store(monkeypatch)
+
+    class _SandboxStatusStubAgent:
+        async def ainvoke(self, payload):
+            return {"messages": payload["messages"]}
+
+        async def astream(self, payload, stream_mode=("messages", "updates")):
+            from server.agents.event_bus import emit_sandbox_status
+
+            final_msg = AIMessage(
+                content=[{"type": "text", "text": "Done."}],
+                usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                response_metadata={"model_name": "gpt-4.1-mini"},
+            )
+            await emit_sandbox_status(
+                run_id="sandbox-run-1",
+                stage="executing",
+                message="Running pandas analysis.",
+            )
+            if "messages" in stream_mode:
+                from langchain_core.messages import AIMessageChunk
+
+                chunk = AIMessageChunk(content=[{"type": "text", "text": "Done"}])
+                yield ("messages", (chunk, {"langgraph_node": "model"}))
+            if "updates" in stream_mode:
+                yield ("updates", {"model": {"messages": [final_msg]}})
+
+    monkeypatch.setattr(agents_api, "get_agent", lambda: _SandboxStatusStubAgent())
+    client = TestClient(app)
+
+    events = []
+    with client.stream(
+        "POST",
+        "/api/agent/stream",
+        json={"message": "Run python plot analysis"},
+    ) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            payload = json.loads(line.removeprefix("data: "))
+            events.append(payload["type"])
+
+    assert "sandbox_status" in events
+
+
 def test_message_and_attachment_ordering_is_stable(monkeypatch):
     store = _patch_memory_store(monkeypatch)
     _patch_agent(monkeypatch)
@@ -449,6 +609,8 @@ def test_stream_schema_endpoint():
     assert response.status_code == 200
     schema = response.json()
     assert "oneOf" in schema or "anyOf" in schema
+    rendered = json.dumps(schema)
+    assert "sandbox_status" in rendered
 
 
 def test_list_conversations_endpoint(monkeypatch):

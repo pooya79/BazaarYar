@@ -143,6 +143,10 @@ def _media_type(content_type: str, extension: str) -> AttachmentMediaType:
     return "binary"
 
 
+def infer_attachment_media_type(content_type: str, filename: str) -> AttachmentMediaType:
+    return _media_type((content_type or "").lower(), _file_extension(filename))
+
+
 def _clip_text(value: str, max_chars: int = _TEXT_PREVIEW_LIMIT) -> str:
     if len(value) <= max_chars:
         return value
@@ -374,6 +378,44 @@ async def store_uploaded_file(upload: UploadFile) -> StoredAttachment:
         created_at=datetime.now(timezone.utc),
     )
     return attachment
+
+
+def store_generated_artifact(
+    *,
+    filename: str,
+    payload: bytes,
+    content_type: str | None = None,
+) -> StoredAttachment:
+    if not filename:
+        raise HTTPException(status_code=400, detail="Generated artifact is missing a filename.")
+    if not payload:
+        raise HTTPException(status_code=400, detail=f"Generated artifact '{filename}' is empty.")
+
+    normalized_name = _normalize_filename(filename)
+    extension = _file_extension(normalized_name)
+    resolved_content_type = (
+        (content_type or "").strip().lower()
+        or (mimetypes.guess_type(normalized_name)[0] or "application/octet-stream").lower()
+    )
+
+    file_id = str(uuid4())
+    root = _storage_root()
+    stored_name = f"{file_id}{extension}"
+    stored_path = root / "files" / stored_name
+    stored_path.write_bytes(payload)
+
+    preview_text, extraction_note = _extract_text_preview(payload, resolved_content_type, extension)
+    return StoredAttachment(
+        id=file_id,
+        filename=normalized_name,
+        content_type=resolved_content_type,
+        media_type=_media_type(resolved_content_type, extension),
+        size_bytes=len(payload),
+        storage_path=str(stored_path),
+        preview_text=preview_text,
+        extraction_note=extraction_note,
+        created_at=datetime.now(timezone.utc),
+    )
 
 
 def load_attachment(file_id: str) -> StoredAttachment | None:

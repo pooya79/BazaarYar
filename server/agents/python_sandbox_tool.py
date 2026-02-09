@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+from uuid import uuid4
+
+from langchain.tools import tool
+
+from server.agents.attachments import (
+    load_attachments_for_ids,
+    store_generated_artifact,
+)
+from server.agents.event_bus import emit_sandbox_status, get_request_context
+from server.agents.sandbox_executor import execute_sandbox
+from server.agents.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
+from server.core.config import get_settings
+from server.db.session import AsyncSessionLocal
+from server.domain.chat_store import save_uploaded_attachments
+
+
+def _json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=True)
+
+
+def _parse_attachment_ids(raw: str) -> list[str]:
+    try:
+        payload = json.loads(raw)
+    except Exception as exc:
+        raise ValueError(f"Invalid attachment_ids_json payload: {exc}") from exc
+    if not isinstance(payload, list):
+        raise ValueError("attachment_ids_json must be a JSON array of attachment IDs.")
+    cleaned: list[str] = []
+    for item in payload:
+        if isinstance(item, str) and item.strip():
+            cleaned.append(item.strip())
+    return cleaned
+
+
+@tool(
+    description=(
+        "Run Python code in an isolated sandbox for data analysis and plotting. "
+        "Available libraries include pandas, matplotlib, seaborn, numpy and openpyxl. "
+        "Args: code, attachment_ids_json (JSON array), description (optional)."
+    )
+)
+async def run_python_analysis(
+    code: str,
+    attachment_ids_json: str = "[]",
+    description: str | None = None,
+) -> str:
+    settings = get_settings()
+    if not settings.sandbox_tool_enabled:
+        return _json(
+            {
+                "status": "failed",
+                "summary": "Sandbox tool is disabled.",
+                "artifact_attachment_ids": [],
+                "artifacts": [],
+                "stdout_tail": "",
+                "stderr_tail": "",
+            }
+        )
+
+    if len(code) > settings.sandbox_max_code_chars:
+        return _json(
+            {
+                "status": "failed",
+                "summary": (
+                    f"Code length exceeds max of {settings.sandbox_max_code_chars} characters."
+                ),
+                "artifact_attachment_ids": [],
+                "artifacts": [],
+                "stdout_tail": "",
+                "stderr_tail": "",
+            }
+        )
+
+    try:
+        attachment_ids = _parse_attachment_ids(attachment_ids_json)
+    except Exception as exc:
+        return _json(
+            {
+                "status": "failed",
+                "summary": str(exc),
+                "artifact_attachment_ids": [],
+                "artifacts": [],
+                "stdout_tail": "",
+                "stderr_tail": "",
+            }
+        )
+
+    context = get_request_context()
+    if not attachment_ids and context is not None:
+        attachment_ids = list(context.latest_user_attachment_ids)
+
+    run_id = str(uuid4())
+
+    async def _status_callback(stage: str, message: str) -> None:
+        await emit_sandbox_status(run_id=run_id, stage=stage, message=message)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            attachments = await load_attachments_for_ids(
+                session,
+                attachment_ids,
+                allow_json_fallback=False,
+            )
+            sandbox_request = SandboxExecutionRequest(
+                run_id=run_id,
+                code=code,
+                files=[
+                    SandboxInputFile(
+                        attachment_id=item.id,
+                        filename=item.filename,
+                        storage_path=item.storage_path,
+                        content_type=item.content_type,
+                    )
+                    for item in attachments
+                ],
+            )
+            result = await execute_sandbox(sandbox_request, on_status=_status_callback)
+
+            stored_artifacts = []
+            for artifact in result.artifacts:
+                stored_artifacts.append(
+                    store_generated_artifact(
+                        filename=artifact.filename,
+                        payload=artifact.payload,
+                        content_type=artifact.content_type,
+                    )
+                )
+
+            if stored_artifacts:
+                await save_uploaded_attachments(session, stored_artifacts)
+
+            artifact_ids = [item.id for item in stored_artifacts]
+            artifact_rows = [
+                {
+                    "id": item.id,
+                    "filename": item.filename,
+                    "content_type": item.content_type,
+                    "media_type": item.media_type,
+                    "size_bytes": item.size_bytes,
+                }
+                for item in stored_artifacts
+            ]
+
+            summary_suffix = f" ({description})" if description else ""
+            summary = result.summary + summary_suffix
+            return _json(
+                {
+                    "status": result.status,
+                    "summary": summary,
+                    "artifact_attachment_ids": artifact_ids,
+                    "artifacts": artifact_rows,
+                    "stdout_tail": result.stdout_tail,
+                    "stderr_tail": result.stderr_tail,
+                    "run_id": run_id,
+                }
+            )
+    except Exception as exc:
+        await emit_sandbox_status(run_id=run_id, stage="failed", message=str(exc))
+        return _json(
+            {
+                "status": "failed",
+                "summary": f"Sandbox execution failed: {exc}",
+                "artifact_attachment_ids": [],
+                "artifacts": [],
+                "stdout_tail": "",
+                "stderr_tail": "",
+                "run_id": run_id,
+            }
+        )
+
+
+PYTHON_SANDBOX_TOOLS = [run_python_analysis]

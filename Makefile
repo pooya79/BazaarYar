@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server test-server web db db-down db-migrate db-downgrade
+.PHONY: install install-server install-web dev server test-server web db db-down db-migrate db-downgrade sandbox-image
 
 install: install-server install-web
 
@@ -33,3 +33,6 @@ db-migrate:
 
 db-downgrade:
 	source server/.venv/bin/activate && alembic -c server/db/alembic.ini downgrade -1
+
+sandbox-image:
+	docker build -t bazaaryar-python-sandbox:latest infra/sandbox
