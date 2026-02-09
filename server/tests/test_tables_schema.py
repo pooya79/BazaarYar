@@ -5,10 +5,10 @@ from uuid import uuid4
 import pytest
 
 from server.db.models import ReferenceTableColumn
-from server.domain.tables.errors import QueryValidationError, SchemaConflictError
-from server.domain.tables.query_engine import compile_query
-from server.domain.tables.schema import validate_row_values, validate_schema_update
-from server.domain.tables.types import (
+from server.features.tables.errors import QueryValidationError, SchemaConflictError
+from server.features.tables.query_engine import compile_query
+from server.features.tables.schema import validate_row_values, validate_schema_update
+from server.features.tables.types import (
     AggregateFunction,
     QueryAggregate,
     ReferenceTableColumnInput,

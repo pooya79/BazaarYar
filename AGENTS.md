@@ -21,7 +21,6 @@ The agent platform is designed to support:
   Frontend is organized as feature-first modules in `web/src/features/*` with shared primitives/services in `web/src/shared/*`.
 - Backend API: FastAPI app in `server/`, served via Uvicorn.
   Backend business logic is feature-sliced under `server/features/*`, with API composition in `server/api/router.py`.
-  Legacy paths in `server/api/*`, `server/domain/*`, and `server/agents/attachments.py` are compatibility shims.
 - Services: PostgreSQL (and pgAdmin) via Docker Compose in `infra/`.
 
 ### Key Directories
@@ -29,20 +28,18 @@ The agent platform is designed to support:
 - `infra/pgadmin/`: pgAdmin bootstrap files (saved servers and connection auth data).
 - `scripts/`: Project utility scripts for local automation and developer workflows.
 - `server/`: FastAPI backend application source and Python project config.
-- `server/api/`: Backend API composition and compatibility router shims.
+- `server/api/`: Backend API composition root.
 - `server/features/`: Canonical backend feature slices (`agent`, `attachments`, `chat`, `tables`, `shared`).
 - `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters).
 - `server/features/attachments/`: Attachment feature modules (storage, metadata, upload/download API).
 - `server/features/chat/`: Conversation/chat feature modules (context windowing, persistence orchestration, API).
 - `server/features/tables/`: Reference table feature modules (schema/query/import/service/API).
 - `server/features/shared/`: Shared backend helpers (for example UUID parsing utilities).
-- `server/agents/`: Agent runtime, streaming schema, attachments handling, and model integrations.
+- `server/agents/`: Agent runtime, model integration, and tool infrastructure.
 - `server/core/`: Core backend settings and environment-driven configuration.
 - `server/db/`: SQLAlchemy models, DB session utilities, and Alembic integration.
 - `server/db/models/`: SQLAlchemy model modules split by domain (`chat.py`, `attachments.py`, `tables.py`) with stable exports in `__init__.py`.
 - `server/db/alembic/`: Migration environment and migration version files.
-- `server/domain/`: Compatibility shims that re-export canonical feature modules.
-- `server/SHIM_INVENTORY.md`: Tracked inventory of compatibility shims and migration targets.
 - `server/tests/`: Backend test suite (API and service-level behavior checks).
 - `server/tests/architecture/`: Import-boundary guardrail tests for backend layering and coupling constraints.
 - `web/`: Next.js frontend workspace, build/tooling config, and client app source.
@@ -82,6 +79,6 @@ The agent platform is designed to support:
 - Put feature-specific logic under `web/src/features/<feature>/*`; put cross-feature code under `web/src/shared/*`.
 - Avoid new imports from compatibility layers (`web/src/components/*`, `web/src/lib/*`) unless maintaining legacy paths.
 - Put canonical backend business logic under `server/features/*`; keep `server/api/router.py` composition-only.
-- Treat `server/api/*`, `server/domain/*`, and `server/agents/attachments.py` as compatibility layers; avoid adding new feature code there.
+- Import backend functionality from canonical modules under `server/features/*` and `server/db/models/*`.
 - To load env variables in server you should define them in `server/core/config.py`.
 - Use async routes for server

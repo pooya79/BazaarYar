@@ -56,13 +56,16 @@ def test_chat_and_tables_features_do_not_import_agent_runtime() -> None:
 
 
 def test_business_modules_do_not_import_legacy_agents_attachments() -> None:
-    violations: list[str] = []
-    search_roots = [SERVER / "features", SERVER / "domain"]
-    for root in search_roots:
-        for file_path in _iter_python_files(root):
-            for module, lineno in _imports_for(file_path):
-                if module == "server.agents.attachments":
-                    violations.append(f"{file_path}:{lineno} imports '{module}'")
-    assert not violations, "Business modules cannot import legacy server.agents.attachments:\n" + "\n".join(
-        violations
+    forbidden_prefixes = (
+        "server.agents.attachments",
+        "server.domain",
+        "server.api.agents.router",
+        "server.api.conversations.router",
+        "server.api.tables.router",
     )
+    violations: list[str] = []
+    for file_path in _iter_python_files(SERVER / "features"):
+        for module, lineno in _imports_for(file_path):
+            if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes):
+                violations.append(f"{file_path}:{lineno} imports '{module}'")
+    assert not violations, "Feature modules cannot import removed legacy paths:\n" + "\n".join(violations)

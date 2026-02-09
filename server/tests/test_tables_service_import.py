@@ -6,15 +6,15 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
-from server.domain.tables.importers import ParsedImportData
-from server.domain.tables.types import (
+from server.features.tables.importers import ParsedImportData
+from server.features.tables.types import (
     ImportFormat,
     ImportStartInput,
     RowsBatchResult,
     TableDataType,
 )
 
-tables_service = importlib.import_module("server.domain.tables.service")
+tables_service = importlib.import_module("server.features.tables.service")
 
 
 class _DummySession:

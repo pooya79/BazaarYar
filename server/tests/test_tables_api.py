@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-tables_api = importlib.import_module("server.api.tables.router")
-from server.domain.tables import ExportedPayload
-from server.domain.tables.types import (
+tables_api = importlib.import_module("server.features.tables.api")
+from server.features.tables import ExportedPayload
+from server.features.tables.types import (
     QueriedRow,
     ReferenceTableColumn,
     ReferenceTableCreateInput,

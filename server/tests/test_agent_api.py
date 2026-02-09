@@ -9,9 +9,11 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, ToolMessage
 
-agents_api = importlib.import_module("server.api.agents.router")
-conversations_api = importlib.import_module("server.api.conversations.router")
-from server.domain.chat_store import ConversationListEntry, ConversationNotFoundError
+from server.db.session import get_db_session
+
+agents_api = importlib.import_module("server.features.agent.api.streaming")
+conversations_api = importlib.import_module("server.features.chat.api")
+from server.features.chat import ConversationListEntry, ConversationNotFoundError
 from server.main import app
 
 
@@ -344,7 +346,7 @@ def _patch_memory_store(monkeypatch):
     async def _override_db():
         yield _DummySession(store)
 
-    app.dependency_overrides[agents_api.get_db_session] = _override_db
+    app.dependency_overrides[get_db_session] = _override_db
     return store
 
 

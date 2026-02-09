@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pandas as pd
 
-from server.domain.tables import importers
-from server.domain.tables.types import ImportFormat, ReferenceTableColumnInput, TableDataType
+from server.features.tables import importers
+from server.features.tables.types import ImportFormat, ReferenceTableColumnInput, TableDataType
 
 
 def _attachment(path, *, filename: str | None = None):

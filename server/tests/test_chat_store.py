@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from server.db.models import Message
-from server.domain import chat_store
+from server.features import chat as chat_store
 
 
 class _FakeSession:
