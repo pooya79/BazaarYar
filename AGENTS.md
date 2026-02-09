@@ -49,8 +49,6 @@ The agent platform is designed to support:
 - `web/src/shared/layout/`: App shell and shared workspace layout components.
 - `web/src/shared/api/`: API client layer (HTTP helpers, typed schemas, and client wrappers).
 - `web/src/shared/lib/`: Generic non-visual utilities.
-- `web/src/components/`: Compatibility re-export layer for migrated component paths. Prefer `features/*` or `shared/*` for new code.
-- `web/src/lib/`: Compatibility re-export layer for migrated utility/API paths. Prefer `shared/*` for new code.
 
 ### Core Frameworks/Libraries
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, lucide-react, class-variance-authority, clsx, tailwind-merge, zustand.
