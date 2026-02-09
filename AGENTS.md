@@ -18,6 +18,7 @@ The agent platform is designed to support:
 
 ### High-Level Architecture
 - Frontend: Next.js app in `web/` (React + Tailwind CSS + Radix UI).
+  Frontend is organized as feature-first modules in `web/src/features/*` with shared primitives/services in `web/src/shared/*`.
 - Backend API: FastAPI app in `server/`, served via Uvicorn, with route composition in `server/api/router.py`.
 - Services: PostgreSQL (and pgAdmin) via Docker Compose in `infra/`.
 
@@ -38,15 +39,18 @@ The agent platform is designed to support:
 - `server/tests/`: Backend test suite (API and service-level behavior checks).
 - `web/`: Next.js frontend workspace, build/tooling config, and client app source.
 - `web/public/`: Static assets served directly by the frontend app.
-- `web/src/`: Frontend source code root (routes, views, components, shared libraries).
+- `web/src/`: Frontend source code root (app routes, features, and shared modules).
 - `web/src/app/`: Next.js App Router entrypoints, layouts, and route-level UI.
-- `web/src/components/`: Reusable UI components and feature-specific component groups.
-- `web/src/components/chat-interface/`: Chat experience components (header, input, messages, types/constants).
-- `web/src/components/sidebar/`: Sidebar/navigation components for the chat workspace.
-- `web/src/components/ui/`: Shared design-system primitives built on Radix + Tailwind.
-- `web/src/lib/`: Frontend utilities and shared non-visual logic.
-- `web/src/lib/api/`: API client layer (HTTP helpers, typed schemas, and client wrappers).
-- `web/src/view/`: Page-level composed views built from components and data hooks.
+- `web/src/features/`: Feature modules with local components/hooks/model/utils and feature entrypoints.
+- `web/src/features/chat/`: Chat feature implementation (chat page, streaming/session hooks, timeline utilities, model/types).
+- `web/src/features/reference-tables/`: Reference tables feature implementation (list/detail pages, query/mutation hooks, utilities).
+- `web/src/shared/`: Cross-feature shared modules.
+- `web/src/shared/ui/`: Shared design-system primitives built on Radix + Tailwind.
+- `web/src/shared/layout/`: App shell and shared workspace layout components.
+- `web/src/shared/api/`: API client layer (HTTP helpers, typed schemas, and client wrappers).
+- `web/src/shared/lib/`: Generic non-visual utilities.
+- `web/src/components/`: Compatibility re-export layer for migrated component paths. Prefer `features/*` or `shared/*` for new code.
+- `web/src/lib/`: Compatibility re-export layer for migrated utility/API paths. Prefer `shared/*` for new code.
 
 ### Core Frameworks/Libraries
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS 4, Radix UI, lucide-react, class-variance-authority, clsx, tailwind-merge, zustand.
@@ -68,5 +72,8 @@ The agent platform is designed to support:
 - Keep any single file under 700 LOC; split large work into modules.
 - Use theme variables when styling pages and components (prefer Tailwind theme tokens over raw CSS variables or literal colors).
 - Add code comments on tricky parts
+- Keep route files in `web/src/app/*` thin and import feature pages from feature entrypoints (`@/features/chat`, `@/features/reference-tables`).
+- Put feature-specific logic under `web/src/features/<feature>/*`; put cross-feature code under `web/src/shared/*`.
+- Avoid new imports from compatibility layers (`web/src/components/*`, `web/src/lib/*`) unless maintaining legacy paths.
 - To load env variables in server you should define them in `server/core/config.py`.
 - Use async routes for server

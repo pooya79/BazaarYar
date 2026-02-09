@@ -1,5 +1,5 @@
-import { ChatInterfaceView } from "@/view/ChatInterfaceView";
+import { ChatInterfacePage } from "@/features/chat";
 
 export default function ConversationPage() {
-  return <ChatInterfaceView />;
+  return <ChatInterfacePage />;
 }

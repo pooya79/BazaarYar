@@ -1,4 +1,4 @@
-import { ReferenceTableDetailPageView } from "@/view/ReferenceTableDetailPageView";
+import { ReferenceTableDetailPage as ReferenceTableDetailFeaturePage } from "@/features/reference-tables";
 
 type ReferenceTableDetailPageProps = {
   params:
@@ -14,5 +14,5 @@ export default async function ReferenceTableDetailPage({
   params,
 }: ReferenceTableDetailPageProps) {
   const { tableId } = await params;
-  return <ReferenceTableDetailPageView tableId={tableId} />;
+  return <ReferenceTableDetailFeaturePage tableId={tableId} />;
 }

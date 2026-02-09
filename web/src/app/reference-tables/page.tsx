@@ -1,5 +1,5 @@
-import { ReferenceTablesPageView } from "@/view/ReferenceTablesPageView";
+import { ReferenceTablesPage as ReferenceTablesFeaturePage } from "@/features/reference-tables";
 
 export default function ReferenceTablesPage() {
-  return <ReferenceTablesPageView />;
+  return <ReferenceTablesFeaturePage />;
 }
