@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from langchain.tools import tool
 
-from server.agents.attachments import (
+from server.features.attachments import (
     load_attachments_for_ids,
     store_generated_artifact,
 )
@@ -15,7 +15,7 @@ from server.agents.sandbox_executor import execute_sandbox
 from server.agents.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
 from server.core.config import get_settings
 from server.db.session import AsyncSessionLocal
-from server.domain.chat_store import save_uploaded_attachments
+from server.features.chat import save_uploaded_attachments
 
 
 def _json(payload: dict[str, Any]) -> str:

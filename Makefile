@@ -5,7 +5,7 @@ SHELL := /bin/bash
 install: install-server install-web
 
 install-server:
-	cd server && uv sync
+	cd server && uv sync --group dev
 
 install-web:
 	cd web && pnpm install
@@ -17,7 +17,7 @@ server:
 	uv run --project server uvicorn server.main:app --reload
 
 test-server:
-	PYTHONPATH=. uv run --project server pytest server/tests
+	PYTHONPATH=. uv run --project server python -m pytest server/tests
 
 web:
 	cd web && set -a && . ../.env && set +a && pnpm dev

@@ -1,16 +1,7 @@
-from __future__ import annotations
+"""DEPRECATED compatibility alias to `server.features.chat.types`."""
 
-from dataclasses import dataclass
-from datetime import datetime
-from uuid import UUID
+import sys
 
+from server.features.chat import types as _impl
 
-@dataclass(frozen=True)
-class ConversationListEntry:
-    id: UUID
-    title: str | None
-    starred: bool
-    created_at: datetime
-    updated_at: datetime
-    message_count: int
-    last_message_at: datetime | None
+sys.modules[__name__] = _impl

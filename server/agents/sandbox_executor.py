@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from server.agents.attachments import resolve_storage_path
+from server.features.attachments import resolve_storage_path
 from server.agents.sandbox_schema import (
     SandboxArtifact,
     SandboxExecutionRequest,

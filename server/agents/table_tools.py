@@ -7,7 +7,7 @@ from langchain.tools import tool
 
 from server.core.config import get_settings
 from server.db.session import AsyncSessionLocal
-from server.domain.tables import (
+from server.features.tables import (
     RowsBatchInput,
     RowsQueryInput,
     get_table,

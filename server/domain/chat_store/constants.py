@@ -1,2 +1,7 @@
-DEFAULT_TOKENIZER_NAME = "char4_approx_v1"
-MODEL_CONTEXT_MESSAGE_KINDS = {"normal", "summary", "tool_call", "tool_result"}
+"""DEPRECATED compatibility alias to `server.features.chat.constants`."""
+
+import sys
+
+from server.features.chat import constants as _impl
+
+sys.modules[__name__] = _impl
