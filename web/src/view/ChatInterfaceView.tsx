@@ -10,7 +10,11 @@ import {
   brandVoices,
   quickActions,
 } from "@/components/chat-interface/constants";
-import type { Message } from "@/components/chat-interface/types";
+import type {
+  AssistantTurn,
+  ChatTimelineItem,
+  MessageAttachment,
+} from "@/components/chat-interface/types";
 import {
   isReadyComposerAttachment,
   toMessageAttachment,
@@ -22,14 +26,31 @@ import {
 } from "@/lib/api/clients/agent.client";
 import { buildUrl } from "@/lib/api/http";
 import {
-  formatMetaBlock,
+  extractReasoningTokens,
   formatSandboxStatus,
   formatTime,
-  formatToolCall,
-  formatToolDelta,
-  formatToolResult,
-  mapConversationKind,
+  groupConversationMessages,
 } from "@/view/chatViewUtils";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeAttachments(
+  existing: MessageAttachment[],
+  incoming: MessageAttachment[],
+) {
+  if (incoming.length === 0) {
+    return existing;
+  }
+  const byId = new Map(
+    existing.map((attachment) => [attachment.id, attachment]),
+  );
+  for (const attachment of incoming) {
+    byId.set(attachment.id, attachment);
+  }
+  return Array.from(byId.values());
+}
 
 export function ChatInterfaceView() {
   const router = useRouter();
@@ -38,7 +59,7 @@ export function ChatInterfaceView() {
     typeof params?.conversationId === "string" ? params.conversationId : null;
 
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [timeline, setTimeline] = useState<ChatTimelineItem[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const {
@@ -54,21 +75,25 @@ export function ChatInterfaceView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamStateRef = useRef({
-    textId: null as number | null,
-    reasoningId: null as number | null,
-    toolDelta: new Map<
-      number,
-      { id: number; name?: string; args?: string; callId?: string }
-    >(),
-    sandboxStatus: new Map<string, number>(),
+    assistantTurnId: null as string | null,
+    toolKeysByIndex: new Map<number, string>(),
+    toolKeysByCallId: new Map<string, string>(),
+    sandboxNoteIndexByRunId: new Map<string, number>(),
+    nextToolSeq: 0,
   });
   const hasStreamedRef = useRef(false);
 
+  const createLocalId = useCallback(() => {
+    const id = `local-${messageId.current}`;
+    messageId.current += 1;
+    return id;
+  }, []);
+
   useEffect(() => {
     if (!chatWrapperRef.current) return;
-    if (messages.length === 0 && !isTyping) return;
+    if (timeline.length === 0 && !isTyping) return;
     chatWrapperRef.current.scrollTop = chatWrapperRef.current.scrollHeight;
-  }, [messages.length, isTyping]);
+  }, [timeline.length, isTyping]);
 
   useEffect(() => {
     return () => {
@@ -76,42 +101,123 @@ export function ChatInterfaceView() {
     };
   }, []);
 
+  const resetStreamState = useCallback(() => {
+    streamStateRef.current = {
+      assistantTurnId: null,
+      toolKeysByIndex: new Map(),
+      toolKeysByCallId: new Map(),
+      sandboxNoteIndexByRunId: new Map(),
+      nextToolSeq: 0,
+    };
+    hasStreamedRef.current = false;
+  }, []);
+
   const loadConversation = useCallback(async (conversationId: string) => {
     const conversation = await getAgentConversation(conversationId);
     setActiveChatId(conversation.id);
-    setMessages(
-      conversation.messages
-        .sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-        )
-        .map((message) => ({
-          id: messageId.current++,
-          sender: message.role === "user" ? "user" : "bot",
-          text: message.content,
-          time: formatTime(new Date(message.createdAt)),
-          kind:
-            message.role === "assistant"
-              ? mapConversationKind(message.messageKind)
-              : undefined,
-          attachments: message.attachments
-            .sort((a, b) => a.position - b.position)
-            .map((attachment) => ({
-              id: attachment.id,
-              filename: attachment.filename,
-              contentType: attachment.contentType,
-              mediaType: attachment.mediaType,
-              sizeBytes: attachment.sizeBytes,
-              previewText: attachment.previewText,
-              extractionNote: attachment.extractionNote,
-              localPreviewUrl:
-                attachment.mediaType === "image"
-                  ? attachment.downloadUrl
-                  : undefined,
-            })),
-        })),
-    );
+    setTimeline(groupConversationMessages(conversation.messages));
   }, []);
+
+  const createAssistantTurn = useCallback((): AssistantTurn => {
+    return {
+      id: createLocalId(),
+      sender: "assistant",
+      time: formatTime(new Date()),
+      answerText: "",
+      reasoningText: "",
+      notes: [],
+      toolCalls: [],
+      attachments: [],
+      usage: null,
+      responseMetadata: null,
+      reasoningTokens: null,
+    };
+  }, [createLocalId]);
+
+  const ensureActiveAssistantTurn = useCallback(() => {
+    const activeTurnId = streamStateRef.current.assistantTurnId;
+    if (activeTurnId) {
+      return activeTurnId;
+    }
+    const turn = createAssistantTurn();
+    setTimeline((prev) => [...prev, turn]);
+    streamStateRef.current.assistantTurnId = turn.id;
+    return turn.id;
+  }, [createAssistantTurn]);
+
+  const updateAssistantTurn = useCallback(
+    (turnId: string, updater: (turn: AssistantTurn) => AssistantTurn) => {
+      setTimeline((prev) =>
+        prev.map((item) => {
+          if (item.sender !== "assistant" || item.id !== turnId) {
+            return item;
+          }
+          return updater(item);
+        }),
+      );
+    },
+    [],
+  );
+
+  const appendAssistantAnswer = useCallback(
+    (chunk: string) => {
+      const turnId = ensureActiveAssistantTurn();
+      updateAssistantTurn(turnId, (turn) => ({
+        ...turn,
+        answerText: `${turn.answerText}${chunk}`,
+      }));
+    },
+    [ensureActiveAssistantTurn, updateAssistantTurn],
+  );
+
+  const appendAssistantReasoning = useCallback(
+    (chunk: string) => {
+      const turnId = ensureActiveAssistantTurn();
+      updateAssistantTurn(turnId, (turn) => ({
+        ...turn,
+        reasoningText: `${turn.reasoningText}${chunk}`,
+      }));
+    },
+    [ensureActiveAssistantTurn, updateAssistantTurn],
+  );
+
+  const addAssistantNote = useCallback(
+    (note: string) => {
+      setTimeline((prev) => {
+        const lastItem = prev.at(-1);
+        if (lastItem?.sender === "assistant") {
+          return prev.map((item) => {
+            if (item.id !== lastItem.id || item.sender !== "assistant") {
+              return item;
+            }
+            return {
+              ...item,
+              notes: [...item.notes, note],
+            };
+          });
+        }
+        const turn = createAssistantTurn();
+        return [...prev, { ...turn, notes: [note] }];
+      });
+    },
+    [createAssistantTurn],
+  );
+
+  const addUserMessage = useCallback(
+    (text: string, attachments?: MessageAttachment[]) => {
+      setTimeline((prev) => [
+        ...prev,
+        {
+          id: createLocalId(),
+          sender: "user",
+          text,
+          time: formatTime(new Date()),
+          attachments,
+        },
+      ]);
+    },
+    [createLocalId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +226,7 @@ export function ChatInterfaceView() {
 
     if (!routeConversationId) {
       setActiveChatId(null);
-      setMessages([]);
+      setTimeline([]);
       setMessageInput("");
       clearPendingAttachments();
       if (textareaRef.current) {
@@ -140,16 +246,14 @@ export function ChatInterfaceView() {
           return;
         }
         setActiveChatId(null);
-        setMessages([
+        setTimeline([
           {
-            id: messageId.current++,
-            sender: "bot",
-            text:
+            ...createAssistantTurn(),
+            notes: [
               error instanceof Error
                 ? `Failed to load conversation: ${error.message}`
                 : "Failed to load conversation.",
-            time: formatTime(new Date()),
-            kind: "meta",
+            ],
           },
         ]);
       }
@@ -158,52 +262,12 @@ export function ChatInterfaceView() {
     return () => {
       cancelled = true;
     };
-  }, [routeConversationId, loadConversation, clearPendingAttachments]);
-
-  const addMessage = (
-    text: string,
-    sender: Message["sender"],
-    kind?: Message["kind"],
-    attachments?: Message["attachments"],
-  ) => {
-    const nextMessage: Message = {
-      id: messageId.current++,
-      sender,
-      text,
-      time: formatTime(new Date()),
-      kind,
-      attachments,
-    };
-    setMessages((prev) => [...prev, nextMessage]);
-  };
-
-  const updateMessageText = (id: number, nextText: string) => {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.id === id ? { ...message, text: nextText } : message,
-      ),
-    );
-  };
-
-  const appendMessageText = (id: number, nextChunk: string) => {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.id === id
-          ? { ...message, text: `${message.text}${nextChunk}` }
-          : message,
-      ),
-    );
-  };
-
-  const resetStreamState = useCallback(() => {
-    streamStateRef.current = {
-      textId: null,
-      reasoningId: null,
-      toolDelta: new Map(),
-      sandboxStatus: new Map(),
-    };
-    hasStreamedRef.current = false;
-  }, []);
+  }, [
+    routeConversationId,
+    loadConversation,
+    clearPendingAttachments,
+    createAssistantTurn,
+  ]);
 
   useEffect(() => {
     const handleReset = () => {
@@ -211,7 +275,7 @@ export function ChatInterfaceView() {
       resetStreamState();
       setIsTyping(false);
       setActiveChatId(null);
-      setMessages([]);
+      setTimeline([]);
       setMessageInput("");
       clearPendingAttachments();
       if (textareaRef.current) {
@@ -225,49 +289,6 @@ export function ChatInterfaceView() {
     };
   }, [clearPendingAttachments, resetStreamState]);
 
-  const ensureStreamMessage = (
-    key: "textId" | "reasoningId",
-    initialText: string,
-  ) => {
-    const currentId = streamStateRef.current[key];
-    if (currentId !== null) {
-      return currentId;
-    }
-    const id = messageId.current++;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id,
-        sender: "bot",
-        text: initialText,
-        time: formatTime(new Date()),
-        kind: key === "reasoningId" ? "reasoning" : "assistant",
-      },
-    ]);
-    streamStateRef.current[key] = id;
-    return id;
-  };
-
-  const ensureSandboxStatusMessage = (runId: string, initialText: string) => {
-    const current = streamStateRef.current.sandboxStatus.get(runId);
-    if (current !== undefined) {
-      return current;
-    }
-    const id = messageId.current++;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id,
-        sender: "bot",
-        text: initialText,
-        time: formatTime(new Date()),
-        kind: "meta",
-      },
-    ]);
-    streamStateRef.current.sandboxStatus.set(runId, id);
-    return id;
-  };
-
   const handleSend = async (overrideText?: string) => {
     const baseText =
       typeof overrideText === "string" ? overrideText : messageInput;
@@ -280,11 +301,7 @@ export function ChatInterfaceView() {
     );
 
     if (uploadingCount > 0) {
-      addMessage(
-        "Wait for file uploads to finish before sending.",
-        "bot",
-        "meta",
-      );
+      addAssistantNote("Wait for file uploads to finish before sending.");
       return;
     }
 
@@ -295,7 +312,7 @@ export function ChatInterfaceView() {
 
     const userAttachments = readyAttachments.map(toMessageAttachment);
 
-    addMessage(text || "Sent attachments.", "user", undefined, userAttachments);
+    addUserMessage(text || "Sent attachments.", userAttachments);
     setMessageInput("");
     setPendingAttachments((prev) =>
       prev.filter(
@@ -323,62 +340,183 @@ export function ChatInterfaceView() {
             setIsTyping(false);
             hasStreamedRef.current = true;
           }
+
           if (event.type === "text_delta") {
-            const id = ensureStreamMessage("textId", "");
-            appendMessageText(id, event.content);
+            appendAssistantAnswer(event.content);
             return;
           }
+
           if (event.type === "reasoning_delta") {
-            const id = ensureStreamMessage("reasoningId", "");
-            appendMessageText(id, event.content);
+            appendAssistantReasoning(event.content);
             return;
           }
+
           if (event.type === "tool_call_delta") {
-            const index = event.index ?? 0;
-            let entry = streamStateRef.current.toolDelta.get(index);
-            if (!entry) {
-              const id = messageId.current++;
-              entry = { id, name: event.name ?? "", args: "" };
-              streamStateRef.current.toolDelta.set(index, entry);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id,
-                  sender: "bot",
-                  text: "",
-                  time: formatTime(new Date()),
-                  kind: "tool_call",
-                },
-              ]);
-            }
-            if (event.name) {
-              entry.name = event.name;
-            }
-            if (event.id) {
-              entry.callId = event.id;
-            }
-            if (event.args) {
-              entry.args = `${entry.args ?? ""}${event.args}`;
-            }
-            updateMessageText(entry.id, formatToolDelta(entry));
-            return;
-          }
-          if (event.type === "tool_call") {
-            let matched = false;
-            if (event.id) {
-              for (const entry of streamStateRef.current.toolDelta.values()) {
-                if (entry.callId === event.id) {
-                  updateMessageText(entry.id, formatToolCall(event));
-                  matched = true;
-                  break;
+            const turnId = ensureActiveAssistantTurn();
+            const streamIndex =
+              typeof event.index === "number" ? event.index : null;
+            const knownKeyByCallId = event.id?.trim()
+              ? streamStateRef.current.toolKeysByCallId.get(event.id)
+              : undefined;
+            const knownKeyByIndex =
+              streamIndex !== null
+                ? streamStateRef.current.toolKeysByIndex.get(streamIndex)
+                : undefined;
+            const knownKey = knownKeyByCallId || knownKeyByIndex;
+
+            updateAssistantTurn(turnId, (turn) => {
+              const toolCalls = turn.toolCalls.slice();
+              let targetIndex = knownKey
+                ? toolCalls.findIndex((item) => item.key === knownKey)
+                : -1;
+
+              if (targetIndex < 0 && event.id) {
+                targetIndex = toolCalls.findIndex(
+                  (item) => item.callId === event.id,
+                );
+              }
+
+              if (targetIndex < 0) {
+                const key = `${turn.id}:tool:${streamStateRef.current.nextToolSeq++}`;
+                if (streamIndex !== null) {
+                  streamStateRef.current.toolKeysByIndex.set(streamIndex, key);
+                }
+                if (event.id) {
+                  streamStateRef.current.toolKeysByCallId.set(event.id, key);
+                }
+                return {
+                  ...turn,
+                  toolCalls: [
+                    ...toolCalls,
+                    {
+                      key,
+                      name: event.name ?? "unknown",
+                      callId: event.id,
+                      streamedArgsText: event.args ?? "",
+                      status: "streaming",
+                    },
+                  ],
+                };
+              }
+
+              const current = toolCalls[targetIndex];
+              toolCalls[targetIndex] = {
+                ...current,
+                name: event.name ?? current.name,
+                callId: event.id ?? current.callId,
+                streamedArgsText: `${current.streamedArgsText}${event.args ?? ""}`,
+                status:
+                  current.status === "completed" ? "completed" : "streaming",
+              };
+
+              if (!knownKey) {
+                if (streamIndex !== null) {
+                  streamStateRef.current.toolKeysByIndex.set(
+                    streamIndex,
+                    toolCalls[targetIndex].key,
+                  );
                 }
               }
-            }
-            if (!matched) {
-              addMessage(formatToolCall(event), "bot", "tool_call");
-            }
+
+              if (event.id && toolCalls[targetIndex].key) {
+                streamStateRef.current.toolKeysByCallId.set(
+                  event.id,
+                  toolCalls[targetIndex].key,
+                );
+              }
+
+              return {
+                ...turn,
+                toolCalls,
+              };
+            });
             return;
           }
+
+          if (event.type === "tool_call") {
+            const turnId = ensureActiveAssistantTurn();
+            const mappedKey = event.id?.trim()
+              ? streamStateRef.current.toolKeysByCallId.get(event.id)
+              : undefined;
+            updateAssistantTurn(turnId, (turn) => {
+              const toolCalls = turn.toolCalls.slice();
+              let targetIndex = mappedKey
+                ? toolCalls.findIndex((item) => item.key === mappedKey)
+                : -1;
+
+              if (targetIndex < 0) {
+                targetIndex = event.id
+                  ? toolCalls.findIndex((item) => item.callId === event.id)
+                  : -1;
+              }
+
+              if (targetIndex < 0) {
+                targetIndex = toolCalls.findIndex(
+                  (item) =>
+                    item.status === "streaming" && item.name === "unknown",
+                );
+              }
+
+              if (targetIndex < 0) {
+                targetIndex = toolCalls.findIndex(
+                  (item) => item.status === "streaming",
+                );
+              }
+
+              if (targetIndex < 0) {
+                targetIndex = toolCalls.findIndex(
+                  (item) =>
+                    item.status === "called" &&
+                    !item.resultContent &&
+                    (event.name ? item.name === event.name : true),
+                );
+              }
+
+              const argsText = Object.keys(event.args).length
+                ? JSON.stringify(event.args, null, 2)
+                : "";
+
+              if (targetIndex < 0) {
+                toolCalls.push({
+                  key: event.id
+                    ? `${turn.id}:call:${event.id}`
+                    : `${turn.id}:tool:${streamStateRef.current.nextToolSeq++}`,
+                  name: event.name ?? "unknown",
+                  callType: event.call_type,
+                  callId: event.id,
+                  streamedArgsText: argsText,
+                  finalArgs: event.args,
+                  status: "called",
+                });
+              } else {
+                const current = toolCalls[targetIndex];
+                toolCalls[targetIndex] = {
+                  ...current,
+                  name: event.name ?? current.name,
+                  callType: event.call_type ?? current.callType,
+                  callId: event.id ?? current.callId,
+                  finalArgs: event.args,
+                  streamedArgsText: current.streamedArgsText || argsText,
+                  status:
+                    current.status === "completed" ? "completed" : "called",
+                };
+              }
+
+              if (event.id) {
+                streamStateRef.current.toolKeysByCallId.set(
+                  event.id,
+                  toolCalls[targetIndex].key,
+                );
+              }
+
+              return {
+                ...turn,
+                toolCalls,
+              };
+            });
+            return;
+          }
+
           if (event.type === "tool_result") {
             const attachments =
               event.artifacts?.map((artifact) => ({
@@ -394,45 +532,123 @@ export function ChatInterfaceView() {
                     ? buildUrl(artifact.download_url)
                     : undefined,
               })) ?? [];
-            addMessage(
-              formatToolResult(event),
-              "bot",
-              "tool_result",
-              attachments.length > 0 ? attachments : undefined,
-            );
+
+            const turnId = ensureActiveAssistantTurn();
+            updateAssistantTurn(turnId, (turn) => {
+              const toolCalls = turn.toolCalls.slice();
+              const mappedKey = event.tool_call_id?.trim()
+                ? streamStateRef.current.toolKeysByCallId.get(
+                    event.tool_call_id,
+                  )
+                : undefined;
+              let targetIndex = mappedKey
+                ? toolCalls.findIndex((item) => item.key === mappedKey)
+                : -1;
+
+              if (targetIndex < 0) {
+                targetIndex = event.tool_call_id
+                  ? toolCalls.findIndex(
+                      (item) => item.callId === event.tool_call_id,
+                    )
+                  : -1;
+              }
+
+              if (targetIndex < 0) {
+                targetIndex = toolCalls.findIndex(
+                  (item) => !item.resultContent,
+                );
+              }
+
+              if (targetIndex < 0) {
+                toolCalls.push({
+                  key: event.tool_call_id
+                    ? `${turn.id}:result:${event.tool_call_id}`
+                    : `${turn.id}:tool:${streamStateRef.current.nextToolSeq++}`,
+                  name: "unknown",
+                  callId: event.tool_call_id,
+                  streamedArgsText: "",
+                  status: "called",
+                });
+                targetIndex = toolCalls.length - 1;
+              }
+
+              const current = toolCalls[targetIndex];
+              toolCalls[targetIndex] = {
+                ...current,
+                callId: current.callId ?? event.tool_call_id,
+                resultContent: event.content,
+                resultArtifacts: attachments,
+                status: "completed",
+              };
+
+              if (event.tool_call_id) {
+                streamStateRef.current.toolKeysByCallId.set(
+                  event.tool_call_id,
+                  toolCalls[targetIndex].key,
+                );
+              }
+
+              return {
+                ...turn,
+                toolCalls,
+                attachments: mergeAttachments(turn.attachments, attachments),
+              };
+            });
             return;
           }
+
           if (event.type === "sandbox_status") {
-            const id = ensureSandboxStatusMessage(
-              event.run_id,
-              formatSandboxStatus(event),
-            );
-            updateMessageText(id, formatSandboxStatus(event));
+            const turnId = ensureActiveAssistantTurn();
+            const nextText = formatSandboxStatus(event);
+            updateAssistantTurn(turnId, (turn) => {
+              const notes = turn.notes.slice();
+              const existingIndex =
+                streamStateRef.current.sandboxNoteIndexByRunId.get(
+                  event.run_id,
+                );
+              if (existingIndex === undefined) {
+                notes.push(nextText);
+                streamStateRef.current.sandboxNoteIndexByRunId.set(
+                  event.run_id,
+                  notes.length - 1,
+                );
+              } else {
+                notes[existingIndex] = nextText;
+              }
+              return {
+                ...turn,
+                notes,
+              };
+            });
             return;
           }
+
           if (event.type === "final") {
-            const id = ensureStreamMessage("textId", "");
-            updateMessageText(id, event.output_text);
+            const turnId = ensureActiveAssistantTurn();
+            updateAssistantTurn(turnId, (turn) => {
+              const usage = isRecord(event.usage) ? event.usage : null;
+              const responseMetadata = isRecord(event.response_metadata)
+                ? event.response_metadata
+                : null;
+              return {
+                ...turn,
+                answerText: event.output_text,
+                usage,
+                responseMetadata,
+                reasoningTokens: extractReasoningTokens(usage),
+                time: formatTime(new Date()),
+              };
+            });
+
             if (
               event.conversation_id &&
               event.conversation_id !== activeChatId
             ) {
               router.replace(`/c/${event.conversation_id}`);
             }
-            const usageText = formatMetaBlock("usage", event.usage);
-            if (usageText) {
-              addMessage(usageText, "bot", "meta");
-            }
-            const metadataText = formatMetaBlock(
-              "response_metadata",
-              event.response_metadata,
-            );
-            if (metadataText) {
-              addMessage(metadataText, "bot", "meta");
-            }
+
             window.dispatchEvent(new Event("agent-conversations:refresh"));
             setIsTyping(false);
-            return;
           }
         },
       });
@@ -441,12 +657,10 @@ export function ChatInterfaceView() {
         return;
       }
       setIsTyping(false);
-      addMessage(
+      addAssistantNote(
         error instanceof Error
           ? `Something went wrong: ${error.message}`
           : "Something went wrong while streaming the response.",
-        "bot",
-        "meta",
       );
     } finally {
       if (streamAbortRef.current === abortController) {
@@ -478,7 +692,7 @@ export function ChatInterfaceView() {
     setBrandVoiceIndex((prev) => (prev + 1) % brandVoices.length);
   };
 
-  const hasMessages = messages.length > 0;
+  const hasMessages = timeline.length > 0;
   const hasReadyAttachment = pendingAttachments.some(
     (item) => item.status === "ready",
   );
@@ -498,7 +712,7 @@ export function ChatInterfaceView() {
         {!hasMessages ? (
           <ChatEmptyState actions={quickActions} onAction={handleQuickAction} />
         ) : (
-          <ChatMessages messages={messages} isTyping={isTyping} />
+          <ChatMessages timeline={timeline} isTyping={isTyping} />
         )}
       </div>
 

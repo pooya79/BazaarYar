@@ -11,20 +11,41 @@ export type MessageAttachment = {
   localPreviewUrl?: string;
 };
 
-export type Message = {
-  id: number;
-  sender: "bot" | "user";
+export type ToolCallEntry = {
+  key: string;
+  name: string;
+  callType?: string | null;
+  callId?: string | null;
+  streamedArgsText: string;
+  finalArgs?: Record<string, unknown> | null;
+  resultContent?: string | null;
+  resultArtifacts?: MessageAttachment[];
+  status: "streaming" | "called" | "completed";
+};
+
+export type AssistantTurn = {
+  id: string;
+  sender: "assistant";
+  time: string;
+  answerText: string;
+  reasoningText: string;
+  notes: string[];
+  toolCalls: ToolCallEntry[];
+  attachments: MessageAttachment[];
+  usage?: Record<string, unknown> | null;
+  responseMetadata?: Record<string, unknown> | null;
+  reasoningTokens?: number | null;
+};
+
+export type UserMessage = {
+  id: string;
+  sender: "user";
   text: string;
   time: string;
-  kind?:
-    | "assistant"
-    | "reasoning"
-    | "summary"
-    | "tool_call"
-    | "tool_result"
-    | "meta";
   attachments?: MessageAttachment[];
 };
+
+export type ChatTimelineItem = UserMessage | AssistantTurn;
 
 export type ChatItem = {
   id: string;

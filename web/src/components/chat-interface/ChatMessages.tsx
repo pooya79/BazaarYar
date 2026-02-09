@@ -1,13 +1,13 @@
-import {
-  Bot,
-  FileSpreadsheet,
-  FileText,
-  Image as ImageIcon,
-  User,
-} from "lucide-react";
+"use client";
+
+import { Bot, User } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { Message } from "./types";
+import { AssistantMessageCard } from "./AssistantMessageCard";
+import { MessageAttachments } from "./MessageAttachments";
+import { ToolCallDetailsSheet } from "./ToolCallDetailsSheet";
+import type { AssistantTurn, ChatTimelineItem } from "./types";
 
 const iconClass = "size-[18px]";
 
@@ -18,153 +18,147 @@ const bubbleContentClass =
   "px-4 py-3.5 leading-relaxed whitespace-pre-line text-[0.9375rem]";
 
 type ChatMessagesProps = {
-  messages: Message[];
+  timeline: ChatTimelineItem[];
   isTyping: boolean;
 };
 
-function formatBytes(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+type SelectedTool = {
+  turnId: string;
+  toolKey: string;
+};
+
+function findAssistantTurn(
+  timeline: ChatTimelineItem[],
+  turnId: string,
+): AssistantTurn | null {
+  for (const item of timeline) {
+    if (item.sender === "assistant" && item.id === turnId) {
+      return item;
+    }
+  }
+  return null;
 }
 
-function AttachmentIcon({
-  mediaType,
-}: {
-  mediaType: "image" | "pdf" | "text" | "spreadsheet" | "binary";
-}) {
-  if (mediaType === "image") {
-    return <ImageIcon className="size-4" aria-hidden="true" />;
-  }
-  if (mediaType === "spreadsheet") {
-    return <FileSpreadsheet className="size-4" aria-hidden="true" />;
-  }
-  return <FileText className="size-4" aria-hidden="true" />;
-}
+export function ChatMessages({ timeline, isTyping }: ChatMessagesProps) {
+  const [selectedTool, setSelectedTool] = useState<SelectedTool | null>(null);
 
-export function ChatMessages({ messages, isTyping }: ChatMessagesProps) {
+  const selectedTurn = useMemo(() => {
+    if (!selectedTool) {
+      return null;
+    }
+    return findAssistantTurn(timeline, selectedTool.turnId);
+  }, [timeline, selectedTool]);
+
+  const selectedCall = useMemo(() => {
+    if (!selectedTurn || !selectedTool) {
+      return null;
+    }
+    return (
+      selectedTurn.toolCalls.find(
+        (tool) => tool.key === selectedTool.toolKey,
+      ) || null
+    );
+  }, [selectedTool, selectedTurn]);
+
   return (
-    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-8">
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={cn(
-            "flex gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300",
-            message.sender === "user" && "flex-row-reverse",
-          )}
-        >
+    <>
+      <div className="mx-auto flex w-full max-w-[800px] flex-col gap-8">
+        {timeline.map((item) => (
           <div
+            key={item.id}
             className={cn(
-              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border text-[0.75rem] font-semibold shadow-none",
-              message.sender === "bot"
-                ? "border-transparent bg-marketing-primary text-marketing-on-primary"
-                : "border-marketing-border bg-secondary text-marketing-text-secondary",
+              "animate-in fade-in slide-in-from-bottom-2 flex gap-4 duration-300",
+              item.sender === "user" && "flex-row-reverse",
             )}
           >
-            {message.sender === "bot" ? (
-              <Bot className={iconClass} aria-hidden="true" />
+            <div
+              className={cn(
+                "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border text-[0.75rem] font-semibold shadow-none",
+                item.sender === "assistant"
+                  ? "border-transparent bg-marketing-primary text-marketing-on-primary"
+                  : "border-marketing-border bg-secondary text-marketing-text-secondary",
+              )}
+            >
+              {item.sender === "assistant" ? (
+                <Bot className={iconClass} aria-hidden="true" />
+              ) : (
+                <User className={iconClass} aria-hidden="true" />
+              )}
+            </div>
+
+            {item.sender === "assistant" ? (
+              <div className="flex w-full max-w-[70%] flex-col gap-1">
+                <AssistantMessageCard
+                  turn={item}
+                  onToolSelect={(toolKey) =>
+                    setSelectedTool({ turnId: item.id, toolKey })
+                  }
+                />
+              </div>
             ) : (
-              <User className={iconClass} aria-hidden="true" />
-            )}
-          </div>
-          <div className="flex max-w-[70%] flex-col gap-1">
-            {message.sender === "bot" && message.kind && (
-              <div className="px-1 text-[0.65rem] uppercase tracking-[0.08em] text-marketing-text-muted">
-                {message.kind.replace("_", " ")}
+              <div className="flex max-w-[70%] flex-col gap-1">
+                <Card
+                  className={cn(
+                    "gap-0 rounded-xl rounded-br-[4px] border-0 bg-marketing-text-primary py-0 text-marketing-on-primary",
+                    bubbleBaseClass,
+                  )}
+                >
+                  <CardContent className={bubbleContentClass}>
+                    <div className="space-y-3">
+                      {item.text ? <div>{item.text}</div> : null}
+                      {item.attachments ? (
+                        <MessageAttachments attachments={item.attachments} />
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+                <div className="px-1 text-[0.7rem] text-marketing-text-muted">
+                  {item.time}
+                </div>
               </div>
             )}
-            <Card
+          </div>
+        ))}
+
+        {isTyping ? (
+          <div className="flex gap-4">
+            <div
               className={cn(
-                "gap-0 py-0",
-                bubbleBaseClass,
-                message.sender === "user"
-                  ? "rounded-bl-xl rounded-br-[4px] border-0 bg-marketing-text-primary text-marketing-on-primary"
-                  : "rounded-bl-[4px]",
-                message.kind === "reasoning" &&
-                  "border-dashed text-marketing-text-muted",
-                message.kind === "meta" &&
-                  "border-dashed text-marketing-text-muted",
-                (message.kind === "tool_call" ||
-                  message.kind === "tool_result") &&
-                  "border-marketing-border/80",
+                "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-marketing-primary text-marketing-on-primary",
               )}
             >
-              <CardContent
+              <Bot className={iconClass} aria-hidden="true" />
+            </div>
+            <div className="flex max-w-[70%] flex-col gap-1">
+              <Card
                 className={cn(
-                  bubbleContentClass,
-                  (message.kind === "tool_call" ||
-                    message.kind === "tool_result") &&
-                    "font-mono text-[0.95rem]",
+                  "gap-0 rounded-xl rounded-bl-[4px] py-0",
+                  bubbleBaseClass,
                 )}
               >
-                <div className="flex flex-col gap-3">
-                  {message.text ? <div>{message.text}</div> : null}
-                  {message.attachments && message.attachments.length > 0 ? (
-                    <div className="space-y-2">
-                      {message.attachments.map((attachment) => (
-                        <div
-                          key={attachment.id}
-                          className="rounded-lg border border-marketing-border bg-marketing-surface-translucent p-3"
-                        >
-                          <div className="flex items-center gap-2 text-sm">
-                            <AttachmentIcon mediaType={attachment.mediaType} />
-                            <span className="truncate font-medium">
-                              {attachment.filename}
-                            </span>
-                            <span className="ml-auto text-xs text-marketing-text-muted">
-                              {formatBytes(attachment.sizeBytes)}
-                            </span>
-                          </div>
-                          {attachment.mediaType === "image" &&
-                          attachment.localPreviewUrl ? (
-                            /* biome-ignore lint/performance/noImgElement: Blob previews must use a direct object URL source. */
-                            <img
-                              src={attachment.localPreviewUrl}
-                              alt={attachment.filename}
-                              className="mt-2 max-h-52 w-full rounded-lg border border-marketing-border object-contain bg-marketing-bg"
-                            />
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-            <div className="px-1 text-[0.7rem] text-marketing-text-muted">
-              {message.time}
+                <CardContent className={bubbleContentClass}>
+                  <div className="flex gap-1 px-2 py-1">
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary" />
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.2s]" />
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.4s]" />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
-        </div>
-      ))}
+        ) : null}
+      </div>
 
-      {isTyping && (
-        <div className="flex gap-4">
-          <div
-            className={cn(
-              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-marketing-primary text-marketing-on-primary",
-            )}
-          >
-            <Bot className={iconClass} aria-hidden="true" />
-          </div>
-          <div className="flex max-w-[70%] flex-col gap-1">
-            <Card
-              className={cn(
-                "gap-0 py-0 rounded-xl rounded-bl-[4px]",
-                bubbleBaseClass,
-              )}
-            >
-              <CardContent className={bubbleContentClass}>
-                <div className="flex gap-1 px-2 py-1">
-                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary" />
-                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.2s]" />
-                  <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-marketing-primary [animation-delay:0.4s]" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      )}
-    </div>
+      <ToolCallDetailsSheet
+        open={Boolean(selectedTool && selectedCall && selectedTurn)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTool(null);
+          }
+        }}
+        toolCall={selectedCall}
+        turnTime={selectedTurn?.time || ""}
+      />
+    </>
   );
 }
