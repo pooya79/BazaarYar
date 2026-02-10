@@ -9,7 +9,11 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.agents.event_bus import AgentRequestContext, bind_event_sink, bind_request_context
+from server.features.agent.sandbox.event_bus import (
+    AgentRequestContext,
+    bind_event_sink,
+    bind_request_context,
+)
 from server.agents.usage import extract_usage
 from server.db.models import Attachment, Conversation
 from server.features.agent.api.formatters import (

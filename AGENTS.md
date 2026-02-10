@@ -30,7 +30,7 @@ The agent platform is designed to support:
 - `server/`: FastAPI backend application source and Python project config.
 - `server/api/`: Backend API composition root.
 - `server/features/`: Canonical backend feature slices (`agent`, `attachments`, `chat`, `tables`, `shared`).
-- `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters).
+- `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters, python sandbox tool).
 - `server/features/attachments/`: Attachment feature modules (storage, metadata, upload/download API).
 - `server/features/chat/`: Conversation/chat feature modules (context windowing, persistence orchestration, API).
 - `server/features/tables/`: Reference table feature modules (schema/query/import/service/API).

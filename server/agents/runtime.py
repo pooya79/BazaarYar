@@ -7,7 +7,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain.tools import tool
 
-from server.agents.python_sandbox_tool import PYTHON_SANDBOX_TOOLS
+from server.features.agent.sandbox import PYTHON_SANDBOX_TOOLS
 from server.agents.usage import extract_usage
 from server.agents.table_tools import TABLE_TOOLS
 from server.core.config import get_settings

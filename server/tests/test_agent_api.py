@@ -651,7 +651,7 @@ def test_stream_emits_sandbox_status_events(monkeypatch):
             return {"messages": payload["messages"]}
 
         async def astream(self, payload, stream_mode=("messages", "updates")):
-            from server.agents.event_bus import emit_sandbox_status
+            from server.features.agent.sandbox.event_bus import emit_sandbox_status
 
             final_msg = AIMessage(
                 content=[{"type": "text", "text": "Done."}],

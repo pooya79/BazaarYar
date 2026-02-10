@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from server.features.attachments import resolve_storage_path
-from server.agents.sandbox_schema import (
+from server.features.agent.sandbox.sandbox_schema import (
     SandboxArtifact,
     SandboxExecutionRequest,
     SandboxExecutionResult,
@@ -22,8 +22,7 @@ _STDERR_TAIL_LIMIT = 8_000
 
 
 def _sandbox_runs_root() -> Path:
-    project_root = Path(__file__).resolve().parents[2]
-    root = project_root / "server" / "storage" / "sandbox_runs"
+    root = resolve_storage_path("server/storage/sandbox_runs")
     root.mkdir(parents=True, exist_ok=True)
     return root
 

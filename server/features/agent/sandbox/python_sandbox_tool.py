@@ -10,9 +10,9 @@ from server.features.attachments import (
     load_attachments_for_ids,
     store_generated_artifact,
 )
-from server.agents.event_bus import emit_sandbox_status, get_request_context
-from server.agents.sandbox_executor import execute_sandbox
-from server.agents.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
+from server.features.agent.sandbox.event_bus import emit_sandbox_status, get_request_context
+from server.features.agent.sandbox.sandbox_executor import execute_sandbox
+from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
 from server.core.config import get_settings
 from server.db.session import AsyncSessionLocal
 from server.features.chat import save_uploaded_attachments
@@ -22,13 +22,18 @@ def _json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=True)
 
 
-def _parse_attachment_ids(raw: str) -> list[str]:
-    try:
-        payload = json.loads(raw)
-    except Exception as exc:
-        raise ValueError(f"Invalid attachment_ids_json payload: {exc}") from exc
+def _parse_attachment_ids(raw: str | list[str]) -> list[str]:
+    payload: object
+    if isinstance(raw, list):
+        payload = raw
+    else:
+        try:
+            payload = json.loads(raw)
+        except Exception as exc:
+            raise ValueError(f"Invalid attachment_ids_json payload: {exc}") from exc
+
     if not isinstance(payload, list):
-        raise ValueError("attachment_ids_json must be a JSON array of attachment IDs.")
+        raise ValueError("attachment_ids_json must be a JSON array (string or list) of attachment IDs.")
     cleaned: list[str] = []
     for item in payload:
         if isinstance(item, str) and item.strip():
@@ -40,12 +45,12 @@ def _parse_attachment_ids(raw: str) -> list[str]:
     description=(
         "Run Python code in an isolated sandbox for data analysis and plotting. "
         "Available libraries include pandas, matplotlib, seaborn, numpy and openpyxl. "
-        "Args: code, attachment_ids_json (JSON array), description (optional)."
+        "Args: code, attachment_ids_json (JSON array string or list), description (optional)."
     )
 )
 async def run_python_analysis(
     code: str,
-    attachment_ids_json: str = "[]",
+    attachment_ids_json: str | list[str] = "[]",
     description: str | None = None,
 ) -> str:
     settings = get_settings()

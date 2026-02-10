@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from server.agents.sandbox_executor import execute_sandbox
-from server.agents.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
+from server.features.agent.sandbox.sandbox_executor import execute_sandbox
+from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
 from server.core.config import get_settings
 
 
@@ -115,7 +115,7 @@ async def test_execute_sandbox_builds_secure_docker_command_and_reads_artifacts(
         return _FakeProcess(stdout_lines=lines, stderr_chunks=[], returncode=0)
 
     monkeypatch.setattr(
-        "server.agents.sandbox_executor.asyncio.create_subprocess_exec",
+        "server.features.agent.sandbox.sandbox_executor.asyncio.create_subprocess_exec",
         _fake_create_subprocess_exec,
     )
 
@@ -175,7 +175,7 @@ async def test_execute_sandbox_times_out_and_kills_process(monkeypatch, tmp_path
         return process_ref
 
     monkeypatch.setattr(
-        "server.agents.sandbox_executor.asyncio.create_subprocess_exec",
+        "server.features.agent.sandbox.sandbox_executor.asyncio.create_subprocess_exec",
         _fake_create_subprocess_exec,
     )
 
@@ -233,7 +233,7 @@ async def test_execute_sandbox_rejects_oversized_artifact(monkeypatch, tmp_path:
         return _FakeProcess(stdout_lines=lines, stderr_chunks=[], returncode=0)
 
     monkeypatch.setattr(
-        "server.agents.sandbox_executor.asyncio.create_subprocess_exec",
+        "server.features.agent.sandbox.sandbox_executor.asyncio.create_subprocess_exec",
         _fake_create_subprocess_exec,
     )
 
