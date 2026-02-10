@@ -12,6 +12,7 @@ from server.features.agent.sandbox.sandbox_schema import (
     SandboxArtifact,
     SandboxExecutionRequest,
     SandboxExecutionResult,
+    SandboxInputFileMapping,
     SandboxRunnerArtifact,
 )
 from server.core.config import get_settings
@@ -73,7 +74,9 @@ async def _emit_status(callback: _STATUS_CALLBACK | None, stage: str, message: s
     await callback(stage, message)
 
 
-def _prepare_workspace(request: SandboxExecutionRequest) -> tuple[Path, Path, Path]:
+def _prepare_workspace(
+    request: SandboxExecutionRequest,
+) -> tuple[Path, Path, Path, list[SandboxInputFileMapping]]:
     workspace_dir = _sandbox_runs_root() / request.run_id
     if workspace_dir.exists():
         shutil.rmtree(workspace_dir, ignore_errors=True)
@@ -88,7 +91,7 @@ def _prepare_workspace(request: SandboxExecutionRequest) -> tuple[Path, Path, Pa
     input_dir.chmod(0o777)
     output_dir.chmod(0o777)
 
-    copied_filenames: list[str] = []
+    input_files: list[SandboxInputFileMapping] = []
     for index, item in enumerate(request.files, start=1):
         source = resolve_storage_path(item.storage_path)
         if not source.exists() or not source.is_file():
@@ -99,14 +102,23 @@ def _prepare_workspace(request: SandboxExecutionRequest) -> tuple[Path, Path, Pa
         target = input_dir / target_name
         shutil.copyfile(source, target)
         target.chmod(0o444)
-        copied_filenames.append(target_name)
+        input_files.append(
+            SandboxInputFileMapping(
+                attachment_id=item.attachment_id,
+                original_filename=item.filename,
+                sandbox_filename=target_name,
+                content_type=item.content_type,
+                input_path=f"/workspace/input/{target_name}",
+            )
+        )
 
     job_payload = {
         "code": request.code,
-        "files": copied_filenames,
+        "files": [item.sandbox_filename for item in input_files],
+        "input_files": [item.model_dump(mode="json") for item in input_files],
     }
     (workspace_dir / "job.json").write_text(json.dumps(job_payload, ensure_ascii=True), encoding="utf-8")
-    return workspace_dir, input_dir, output_dir
+    return workspace_dir, input_dir, output_dir, input_files
 
 
 def _validate_and_load_artifacts(
@@ -156,10 +168,11 @@ async def execute_sandbox(
     settings = get_settings()
     workspace_dir: Path | None = None
     output_dir: Path | None = None
+    input_files: list[SandboxInputFileMapping] = []
 
     await _emit_status(on_status, "preparing", "Preparing sandbox workspace.")
     try:
-        workspace_dir, _input_dir, output_dir = _prepare_workspace(request)
+        workspace_dir, _input_dir, output_dir, input_files = _prepare_workspace(request)
 
         command = _docker_command(workspace_dir)
         await _emit_status(on_status, "starting", "Starting sandbox container.")
@@ -234,6 +247,7 @@ async def execute_sandbox(
                 status="timeout",
                 summary="Sandbox execution timed out.",
                 stderr_tail=stderr_accumulator,
+                input_files=input_files,
                 error_message="Sandbox execution timed out.",
             )
 
@@ -247,6 +261,7 @@ async def execute_sandbox(
                 status="failed",
                 summary=runner_error_message,
                 stderr_tail=merged_stderr,
+                input_files=input_files,
                 error_message=runner_error_message,
             )
 
@@ -258,6 +273,7 @@ async def execute_sandbox(
                 status="failed",
                 summary=message,
                 stderr_tail=stderr_accumulator,
+                input_files=input_files,
                 error_message=message,
             )
 
@@ -269,6 +285,7 @@ async def execute_sandbox(
                 status="failed",
                 summary=message,
                 stderr_tail=stderr_accumulator,
+                input_files=input_files,
                 error_message=message,
             )
 
@@ -292,6 +309,7 @@ async def execute_sandbox(
                 status="failed",
                 summary=message,
                 stderr_tail=stderr_accumulator,
+                input_files=input_files,
                 error_message=message,
             )
 
@@ -313,6 +331,7 @@ async def execute_sandbox(
             summary="Sandbox execution completed.",
             stdout_tail=stdout_tail,
             stderr_tail=stderr_tail,
+            input_files=input_files,
             artifacts=artifacts,
         )
     finally:

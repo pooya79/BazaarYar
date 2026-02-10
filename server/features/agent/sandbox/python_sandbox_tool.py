@@ -22,35 +22,33 @@ def _json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=True)
 
 
-def _parse_attachment_ids(raw: str | list[str]) -> list[str]:
-    payload: object
-    if isinstance(raw, list):
-        payload = raw
-    else:
-        try:
-            payload = json.loads(raw)
-        except Exception as exc:
-            raise ValueError(f"Invalid attachment_ids_json payload: {exc}") from exc
+def _normalize_attachment_ids(raw: list[str] | None) -> list[str]:
+    if raw is None:
+        return []
 
-    if not isinstance(payload, list):
-        raise ValueError("attachment_ids_json must be a JSON array (string or list) of attachment IDs.")
     cleaned: list[str] = []
-    for item in payload:
+    for item in raw:
         if isinstance(item, str) and item.strip():
             cleaned.append(item.strip())
     return cleaned
 
 
 @tool(
+    "run_python_code",
     description=(
         "Run Python code in an isolated sandbox for data analysis and plotting. "
+        "Sandbox globals: INPUT_DIR=/workspace/input, OUTPUT_DIR=/workspace/output, ATTACHMENTS, AVAILABLE_FILES, load_dataframe(). "
+        "The sandbox process writes artifacts from /workspace/output (its working directory). "
+        "Pass attachment_ids as a list of user attachment IDs when selecting specific files. "
+        "Use ATTACHMENTS entries (attachment_id/original_filename/sandbox_filename/input_path) to map IDs to files. "
+        "For plots, call plt.savefig('plot.png') or save files under OUTPUT_DIR so artifacts are returned. "
         "Available libraries include pandas, matplotlib, seaborn, numpy and openpyxl. "
-        "Args: code, attachment_ids_json (JSON array string or list), description (optional)."
+        "Args: code, attachment_ids (optional list of attachment IDs), description (optional)."
     )
 )
-async def run_python_analysis(
+async def run_python_code(
     code: str,
-    attachment_ids_json: str | list[str] = "[]",
+    attachment_ids: list[str] | None = None,
     description: str | None = None,
 ) -> str:
     settings = get_settings()
@@ -61,6 +59,7 @@ async def run_python_analysis(
                 "summary": "Sandbox tool is disabled.",
                 "artifact_attachment_ids": [],
                 "artifacts": [],
+                "input_files": [],
                 "stdout_tail": "",
                 "stderr_tail": "",
             }
@@ -75,24 +74,13 @@ async def run_python_analysis(
                 ),
                 "artifact_attachment_ids": [],
                 "artifacts": [],
+                "input_files": [],
                 "stdout_tail": "",
                 "stderr_tail": "",
             }
         )
 
-    try:
-        attachment_ids = _parse_attachment_ids(attachment_ids_json)
-    except Exception as exc:
-        return _json(
-            {
-                "status": "failed",
-                "summary": str(exc),
-                "artifact_attachment_ids": [],
-                "artifacts": [],
-                "stdout_tail": "",
-                "stderr_tail": "",
-            }
-        )
+    attachment_ids = _normalize_attachment_ids(attachment_ids)
 
     context = get_request_context()
     if not attachment_ids and context is not None:
@@ -149,6 +137,7 @@ async def run_python_analysis(
                 }
                 for item in stored_artifacts
             ]
+            input_files = [item.model_dump(mode="json") for item in result.input_files]
 
             summary_suffix = f" ({description})" if description else ""
             summary = result.summary + summary_suffix
@@ -158,6 +147,7 @@ async def run_python_analysis(
                     "summary": summary,
                     "artifact_attachment_ids": artifact_ids,
                     "artifacts": artifact_rows,
+                    "input_files": input_files,
                     "stdout_tail": result.stdout_tail,
                     "stderr_tail": result.stderr_tail,
                     "run_id": run_id,
@@ -171,6 +161,7 @@ async def run_python_analysis(
                 "summary": f"Sandbox execution failed: {exc}",
                 "artifact_attachment_ids": [],
                 "artifacts": [],
+                "input_files": [],
                 "stdout_tail": "",
                 "stderr_tail": "",
                 "run_id": run_id,
@@ -178,4 +169,4 @@ async def run_python_analysis(
         )
 
 
-PYTHON_SANDBOX_TOOLS = [run_python_analysis]
+PYTHON_SANDBOX_TOOLS = [run_python_code]

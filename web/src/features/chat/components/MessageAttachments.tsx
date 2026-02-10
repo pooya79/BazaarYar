@@ -1,4 +1,9 @@
-import { FileSpreadsheet, FileText, Image as ImageIcon } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Image as ImageIcon,
+} from "lucide-react";
 import type { MessageAttachment } from "@/features/chat/model/types";
 import { cn } from "@/shared/lib/utils";
 
@@ -49,6 +54,18 @@ export function MessageAttachments({
               {formatBytes(attachment.sizeBytes)}
             </span>
           </div>
+          {attachment.downloadUrl ? (
+            <div className="mt-2">
+              <a
+                href={attachment.downloadUrl}
+                download={attachment.filename}
+                className="inline-flex items-center gap-1 text-xs text-marketing-accent hover:underline"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                Download
+              </a>
+            </div>
+          ) : null}
           {attachment.mediaType === "image" && attachment.localPreviewUrl ? (
             /* biome-ignore lint/performance/noImgElement: Blob previews and direct download URLs require raw img src. */
             <img

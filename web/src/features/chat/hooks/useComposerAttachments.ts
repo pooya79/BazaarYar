@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import type { PendingAttachment } from "@/features/chat/components/ChatInput";
 import type { MessageAttachment } from "@/features/chat/model/types";
 import { uploadAgentAttachments } from "@/shared/api/clients/agent.client";
+import { buildUrl } from "@/shared/api/http";
 
 export type ComposerAttachment = PendingAttachment & {
   fileId?: string;
@@ -43,6 +44,7 @@ export function toMessageAttachment(
     sizeBytes: item.sizeBytes,
     previewText: item.previewText,
     extractionNote: item.extractionNote,
+    downloadUrl: buildUrl(`/api/agent/attachments/${item.fileId}/content`),
     localPreviewUrl: item.localPreviewUrl,
   };
 }

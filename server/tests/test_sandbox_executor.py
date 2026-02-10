@@ -78,13 +78,15 @@ async def test_execute_sandbox_builds_secure_docker_command_and_reads_artifacts(
     monkeypatch.setattr(settings, "sandbox_max_artifact_bytes", 10_000)
 
     captured_cmd: list[str] = []
+    captured_job_payload: dict[str, object] | None = None
 
     async def _fake_create_subprocess_exec(*cmd, **_kwargs):
-        nonlocal captured_cmd
+        nonlocal captured_cmd, captured_job_payload
         captured_cmd = [str(item) for item in cmd]
 
         mount = captured_cmd[captured_cmd.index("-v") + 1]
         workspace = Path(mount.split(":", 1)[0])
+        captured_job_payload = json.loads((workspace / "job.json").read_text(encoding="utf-8"))
         output_file = workspace / "output" / "plot.png"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_bytes(b"PNG")
@@ -138,6 +140,18 @@ async def test_execute_sandbox_builds_secure_docker_command_and_reads_artifacts(
     assert len(result.artifacts) == 1
     assert result.artifacts[0].filename == "plot.png"
     assert result.stdout_tail == "done"
+    assert result.input_files[0].attachment_id == "a-1"
+    assert result.input_files[0].sandbox_filename == "01_input.csv"
+    assert result.input_files[0].input_path == "/workspace/input/01_input.csv"
+
+    assert captured_job_payload is not None
+    input_files = captured_job_payload["input_files"]
+    assert isinstance(input_files, list)
+    assert input_files[0]["attachment_id"] == "a-1"
+    assert input_files[0]["original_filename"] == "input.csv"
+    assert input_files[0]["sandbox_filename"] == "01_input.csv"
+    assert input_files[0]["content_type"] == "text/csv"
+    assert input_files[0]["input_path"] == "/workspace/input/01_input.csv"
 
     assert "--network" in captured_cmd
     assert captured_cmd[captured_cmd.index("--network") + 1] == "none"

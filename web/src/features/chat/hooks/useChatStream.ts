@@ -504,6 +504,7 @@ export function useChatStream({
                   sizeBytes: artifact.size_bytes,
                   previewText: artifact.preview_text,
                   extractionNote: artifact.extraction_note,
+                  downloadUrl: buildUrl(artifact.download_url),
                   localPreviewUrl:
                     artifact.media_type === "image"
                       ? buildUrl(artifact.download_url)

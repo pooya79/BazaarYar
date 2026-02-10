@@ -468,7 +468,7 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
         async def astream(self, payload, stream_mode=("messages", "updates")):
             tool_call = {
                 "id": "call-plot",
-                "name": "run_python_analysis",
+                "name": "run_python_code",
                 "args": {"code": "print('plot')"},
                 "type": "tool_call",
             }
@@ -484,6 +484,24 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
                         "status": "succeeded",
                         "summary": "Sandbox execution completed.",
                         "artifact_attachment_ids": [artifact.id],
+                        "artifacts": [
+                            {
+                                "id": artifact.id,
+                                "filename": artifact.filename,
+                                "content_type": artifact.content_type,
+                                "media_type": artifact.media_type,
+                                "size_bytes": artifact.size_bytes,
+                            }
+                        ],
+                        "input_files": [
+                            {
+                                "attachment_id": "input-1",
+                                "original_filename": "campaign.csv",
+                                "sandbox_filename": "01_campaign.csv",
+                                "content_type": "text/csv",
+                                "input_path": "/workspace/input/01_campaign.csv",
+                            }
+                        ],
                         "stdout_tail": "ok",
                         "stderr_tail": "",
                     }
@@ -527,6 +545,9 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
 
     assert tool_result_payload is not None
     assert tool_result_payload["artifacts"][0]["id"] == artifact.id
+    assert "artifact_attachments:" in tool_result_payload["content"]
+    assert "input_files:" in tool_result_payload["content"]
+    assert "01_campaign.csv" in tool_result_payload["content"]
     assert final_payload is not None
 
     conversation_id = final_payload["conversation_id"]
@@ -535,6 +556,8 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     messages = reload_response.json()["messages"]
     tool_result_message = next(item for item in messages if item["message_kind"] == "tool_result")
     assert tool_result_message["attachments"][0]["id"] == artifact.id
+    assert "artifact_attachments:" in tool_result_message["content"]
+    assert "input_files:" in tool_result_message["content"]
 
 
 def test_stream_persists_reasoning_kind_in_interleaved_order(monkeypatch):

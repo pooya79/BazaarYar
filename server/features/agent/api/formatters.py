@@ -77,10 +77,39 @@ def format_tool_result(message: ToolMessage, *, payload: dict[str, Any] | None =
     summary = payload.get("summary")
     stdout_tail = payload.get("stdout_tail")
     stderr_tail = payload.get("stderr_tail")
+    artifacts = payload.get("artifacts")
+    input_files = payload.get("input_files")
     if status:
         lines.append(f"status: {status}")
     if summary:
         lines.append(f"summary: {summary}")
+    if isinstance(input_files, list) and input_files:
+        lines.append("input_files:")
+        for item in input_files:
+            if not isinstance(item, dict):
+                continue
+            attachment_id = str(item.get("attachment_id") or "").strip()
+            original_filename = str(item.get("original_filename") or "").strip()
+            sandbox_filename = str(item.get("sandbox_filename") or "").strip()
+            input_path = str(item.get("input_path") or "").strip()
+            lines.append(
+                (
+                    f"- {sandbox_filename or '[unknown]'} "
+                    f"(attachment_id={attachment_id or '-'}, original={original_filename or '-'}, "
+                    f"path={input_path or '-'})"
+                )
+            )
+    if isinstance(artifacts, list) and artifacts:
+        lines.append("artifact_attachments:")
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            artifact_id = str(item.get("id") or "").strip()
+            filename = str(item.get("filename") or "").strip()
+            content_type = str(item.get("content_type") or "").strip()
+            lines.append(
+                f"- {filename or '[unnamed]'} (id={artifact_id or '-'}, content_type={content_type or '-'})"
+            )
     if stdout_tail:
         lines.append("stdout:")
         lines.append(str(stdout_tail))

@@ -67,6 +67,7 @@ function mapPersistedAttachment(
     sizeBytes: attachment.sizeBytes,
     previewText: attachment.previewText,
     extractionNote: attachment.extractionNote,
+    downloadUrl: attachment.downloadUrl,
     localPreviewUrl:
       attachment.mediaType === "image" ? attachment.downloadUrl : undefined,
   };

@@ -9,6 +9,7 @@ export type MessageAttachment = {
   previewText?: string | null;
   extractionNote?: string | null;
   localPreviewUrl?: string;
+  downloadUrl?: string;
 };
 
 export type ToolCallEntry = {

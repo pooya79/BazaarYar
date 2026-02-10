@@ -16,6 +16,14 @@ class SandboxInputFile(BaseModel):
     content_type: str
 
 
+class SandboxInputFileMapping(BaseModel):
+    attachment_id: str
+    original_filename: str
+    sandbox_filename: str
+    content_type: str
+    input_path: str
+
+
 class SandboxRunnerArtifact(BaseModel):
     filename: str
     rel_path: str
@@ -48,5 +56,6 @@ class SandboxExecutionResult(BaseModel):
     summary: str
     stdout_tail: str = ""
     stderr_tail: str = ""
+    input_files: list[SandboxInputFileMapping] = Field(default_factory=list)
     artifacts: list[SandboxArtifact] = Field(default_factory=list)
     error_message: str | None = None
