@@ -10,7 +10,9 @@ from server.features.agent.api.message_builders import build_messages
 from server.features.agent.api.schemas import AgentRequest, AgentResponse
 from server.features.agent.api import streaming
 from server.features.agent.schemas import stream_event_schema
+from server.features.agent.sandbox.session_executor import reset_conversation_sandbox
 from server.features.agent.service import extract_trace
+from server.features.shared.ids import parse_uuid
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -40,3 +42,16 @@ async def stream_agent(
     session: AsyncSession = Depends(get_db_session),
 ):
     return await streaming.stream_agent_response(payload, session=session)
+
+
+@router.post("/conversations/{conversation_id}/sandbox/reset")
+async def reset_conversation_sandbox_session(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, bool]:
+    conversation_uuid = parse_uuid(conversation_id, field_name="conversation_id")
+    reset = await reset_conversation_sandbox(
+        session,
+        conversation_id=str(conversation_uuid),
+    )
+    return {"reset": reset}

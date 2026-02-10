@@ -20,5 +20,6 @@ RUN pip install \
 WORKDIR /workspace
 
 COPY runner.py /opt/sandbox/runner.py
+COPY session_runner.py /opt/sandbox/session_runner.py
 
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "/opt/sandbox/runner.py"]

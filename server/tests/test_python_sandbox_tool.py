@@ -185,3 +185,62 @@ async def test_python_sandbox_tool_uses_request_context_attachments_and_returns_
             "input_path": "/workspace/input/01_campaign_data.csv",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_python_sandbox_tool_uses_persistent_session_when_conversation_context_is_present(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "sandbox_tool_enabled", True)
+    monkeypatch.setattr(settings, "sandbox_persist_sessions", True)
+    monkeypatch.setattr(settings, "sandbox_max_code_chars", 20_000)
+
+    context = SimpleNamespace(
+        latest_user_attachment_ids=(),
+        conversation_id="conv-1",
+    )
+
+    async def _fake_load_attachments_for_ids(_session, attachment_ids, *, allow_json_fallback=True):
+        _ = (attachment_ids, allow_json_fallback)
+        return []
+
+    async def _fake_execute_persistent_sandbox(*, session, conversation_id, request, on_status=None):
+        _ = session
+        assert conversation_id == "conv-1"
+        assert request.files == []
+        if on_status is not None:
+            await on_status("executing", "Running sandbox")
+        return SandboxExecutionResult(
+            run_id=request.run_id,
+            status="succeeded",
+            summary="Sandbox execution completed.",
+            stdout_tail="ok",
+            stderr_tail="",
+            artifacts=[],
+            sandbox_session_id="session-1",
+            sandbox_reused=True,
+            request_sequence=2,
+            queue_wait_ms=11,
+        )
+
+    async def _fake_save_uploaded_attachments(_session, uploaded_files):
+        assert uploaded_files == []
+        return []
+
+    async def _unexpected_execute_sandbox(*_args, **_kwargs):
+        raise AssertionError("execute_sandbox should not be used when conversation_id is present.")
+
+    monkeypatch.setattr(sandbox_tool, "AsyncSessionLocal", _fake_session_cm)
+    monkeypatch.setattr(sandbox_tool, "get_request_context", lambda: context)
+    monkeypatch.setattr(sandbox_tool, "load_attachments_for_ids", _fake_load_attachments_for_ids)
+    monkeypatch.setattr(sandbox_tool, "execute_persistent_sandbox", _fake_execute_persistent_sandbox)
+    monkeypatch.setattr(sandbox_tool, "execute_sandbox", _unexpected_execute_sandbox)
+    monkeypatch.setattr(sandbox_tool, "save_uploaded_attachments", _fake_save_uploaded_attachments)
+
+    output = await sandbox_tool.run_python_code.ainvoke({"code": "print('hello')"})
+
+    payload = json.loads(output)
+    assert payload["status"] == "succeeded"
+    assert payload["sandbox_session_id"] == "session-1"
+    assert payload["sandbox_reused"] is True
+    assert payload["request_sequence"] == 2
+    assert payload["queue_wait_ms"] == 11

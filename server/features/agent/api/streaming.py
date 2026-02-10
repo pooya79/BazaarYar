@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from typing import Any
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.features.agent.sandbox.event_bus import (
@@ -14,6 +15,7 @@ from server.features.agent.sandbox.event_bus import (
     bind_event_sink,
     bind_request_context,
 )
+from server.features.agent.sandbox.session_executor import get_conversation_sandbox_status
 from server.agents.usage import extract_usage
 from server.db.models import Attachment, Conversation
 from server.features.agent.api.formatters import (
@@ -165,6 +167,22 @@ async def stream_agent_response(
         keep_last_turns=settings.context_keep_last_turns,
     )
     model_messages = [to_langchain_message(message) for message in context_messages]
+    sandbox_status = await get_conversation_sandbox_status(
+        session,
+        conversation_id=str(conversation.id),
+    )
+    model_messages.append(
+        HumanMessage(
+            content=(
+                "Sandbox runtime context (system-generated):\n"
+                f"sandbox_session_alive: {'true' if sandbox_status.alive else 'false'}\n"
+                f"sandbox_session_id: {sandbox_status.session_id or 'none'}\n"
+                f"sandbox_request_sequence: {sandbox_status.request_sequence if sandbox_status.request_sequence is not None else 'none'}\n"
+                f"sandbox_available_files: {json.dumps(sandbox_status.available_files, ensure_ascii=True)}\n"
+                f"sandbox_status_reason: {sandbox_status.reason}"
+            )
+        )
+    )
 
     async def _event_stream():
         queue: asyncio.Queue[Any | None] = asyncio.Queue()
@@ -218,6 +236,7 @@ async def stream_agent_response(
             request_context = AgentRequestContext(
                 latest_user_message=user_message,
                 latest_user_attachment_ids=tuple(attachment_ids),
+                conversation_id=str(conversation.id),
             )
 
             try:

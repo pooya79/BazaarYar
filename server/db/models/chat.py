@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from server.db.base import Base
@@ -36,6 +36,12 @@ class Conversation(Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
         order_by=lambda: (Message.created_at, Message.id),
+    )
+    sandbox_session: Mapped[ConversationSandboxSession | None] = relationship(
+        "ConversationSandboxSession",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
 
@@ -94,3 +100,48 @@ class MessageAttachment(Base):
 
     message: Mapped[Message] = relationship("Message", back_populates="attachment_links")
     attachment: Mapped[Attachment] = relationship("Attachment", back_populates="message_links")
+
+
+class ConversationSandboxSession(Base):
+    __tablename__ = "conversation_sandbox_sessions"
+    __table_args__ = (
+        Index("ix_conversation_sandbox_sessions_last_used_at", "last_used_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    container_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    workspace_path: Mapped[str] = mapped_column(Text, nullable=False)
+    owner_host: Mapped[str] = mapped_column(String(255), nullable=False)
+    next_request_seq: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    conversation: Mapped[Conversation] = relationship(
+        "Conversation",
+        back_populates="sandbox_session",
+    )

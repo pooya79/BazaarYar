@@ -11,6 +11,7 @@ from typing import Awaitable, Callable
 class AgentRequestContext:
     latest_user_message: str
     latest_user_attachment_ids: tuple[str, ...]
+    conversation_id: str | None = None
 
 
 @dataclass(frozen=True)

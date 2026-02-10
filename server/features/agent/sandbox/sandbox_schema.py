@@ -59,3 +59,7 @@ class SandboxExecutionResult(BaseModel):
     input_files: list[SandboxInputFileMapping] = Field(default_factory=list)
     artifacts: list[SandboxArtifact] = Field(default_factory=list)
     error_message: str | None = None
+    sandbox_session_id: str | None = None
+    sandbox_reused: bool | None = None
+    request_sequence: int | None = None
+    queue_wait_ms: int | None = None

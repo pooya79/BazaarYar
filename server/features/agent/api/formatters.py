@@ -77,12 +77,27 @@ def format_tool_result(message: ToolMessage, *, payload: dict[str, Any] | None =
     summary = payload.get("summary")
     stdout_tail = payload.get("stdout_tail")
     stderr_tail = payload.get("stderr_tail")
+    sandbox_session_id = payload.get("sandbox_session_id")
+    sandbox_reused = payload.get("sandbox_reused")
+    request_sequence = payload.get("request_sequence")
+    queue_wait_ms = payload.get("queue_wait_ms")
     artifacts = payload.get("artifacts")
     input_files = payload.get("input_files")
     if status:
         lines.append(f"status: {status}")
     if summary:
         lines.append(f"summary: {summary}")
+    if sandbox_session_id:
+        lines.append(f"sandbox_session_id: {sandbox_session_id}")
+    if sandbox_reused is not None:
+        if isinstance(sandbox_reused, bool):
+            lines.append(f"sandbox_reused: {str(sandbox_reused).lower()}")
+        else:
+            lines.append(f"sandbox_reused: {sandbox_reused}")
+    if request_sequence is not None:
+        lines.append(f"request_sequence: {request_sequence}")
+    if queue_wait_ms is not None:
+        lines.append(f"queue_wait_ms: {queue_wait_ms}")
     if isinstance(input_files, list) and input_files:
         lines.append("input_files:")
         for item in input_files:

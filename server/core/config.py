@@ -191,6 +191,26 @@ class Settings(BaseSettings):
         default=20_000,
         validation_alias="SANDBOX_MAX_CODE_CHARS",
     )
+    sandbox_persist_sessions: bool = Field(
+        default=True,
+        validation_alias="SANDBOX_PERSIST_SESSIONS",
+    )
+    sandbox_session_idle_ttl_seconds: int = Field(
+        default=43_200,
+        validation_alias="SANDBOX_SESSION_IDLE_TTL_SECONDS",
+    )
+    sandbox_session_poll_interval_ms: int = Field(
+        default=100,
+        validation_alias="SANDBOX_SESSION_POLL_INTERVAL_MS",
+    )
+    sandbox_session_queue_wait_timeout_seconds: int = Field(
+        default=180,
+        validation_alias="SANDBOX_SESSION_QUEUE_WAIT_TIMEOUT_SECONDS",
+    )
+    sandbox_session_sweep_interval_seconds: int = Field(
+        default=60,
+        validation_alias="SANDBOX_SESSION_SWEEP_INTERVAL_SECONDS",
+    )
 
     @computed_field
     @property

@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from server.db.session import get_db_session
 
 agents_api = importlib.import_module("server.features.agent.api.streaming")
+agent_router_api = importlib.import_module("server.features.agent.api.router")
 conversations_api = importlib.import_module("server.features.chat.api")
 from server.features.chat import ConversationListEntry, ConversationNotFoundError
 from server.main import app
@@ -386,6 +387,17 @@ def _fake_uploaded_attachment(file_id: str):
     )
 
 
+def _payload_message_texts(messages):
+    output = []
+    for message in messages:
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            output.append(content)
+        else:
+            output.append(json.dumps(content, ensure_ascii=True))
+    return output
+
+
 def test_agent_non_stream_response(monkeypatch):
     _patch_memory_store(monkeypatch)
     _patch_agent(monkeypatch)
@@ -483,6 +495,7 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
                     {
                         "status": "succeeded",
                         "summary": "Sandbox execution completed.",
+                        "sandbox_reused": True,
                         "artifact_attachment_ids": [artifact.id],
                         "artifacts": [
                             {
@@ -546,6 +559,7 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     assert tool_result_payload is not None
     assert tool_result_payload["artifacts"][0]["id"] == artifact.id
     assert "artifact_attachments:" in tool_result_payload["content"]
+    assert "sandbox_reused: true" in tool_result_payload["content"]
     assert "input_files:" in tool_result_payload["content"]
     assert "01_campaign.csv" in tool_result_payload["content"]
     assert final_payload is not None
@@ -557,7 +571,86 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     tool_result_message = next(item for item in messages if item["message_kind"] == "tool_result")
     assert tool_result_message["attachments"][0]["id"] == artifact.id
     assert "artifact_attachments:" in tool_result_message["content"]
+    assert "sandbox_reused: true" in tool_result_message["content"]
     assert "input_files:" in tool_result_message["content"]
+
+
+def test_stream_injects_live_sandbox_status_message(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    stub = _patch_agent(monkeypatch)
+
+    async def _fake_status(_session, *, conversation_id):
+        _ = conversation_id
+        return SimpleNamespace(
+            alive=True,
+            session_id="session-123",
+            request_sequence=4,
+            reason="alive",
+            last_used_at=None,
+            available_files=["01_campaign.csv"],
+        )
+
+    monkeypatch.setattr(agents_api, "get_conversation_sandbox_status", _fake_status)
+    client = TestClient(app)
+    response = client.post("/api/agent/stream", json={"message": "hello"})
+    assert response.status_code == 200
+
+    assert stub.last_payload is not None
+    texts = _payload_message_texts(stub.last_payload["messages"])
+    assert any("sandbox_session_alive: true" in text for text in texts)
+    assert any("sandbox_status_reason: alive" in text for text in texts)
+
+
+def test_stream_injects_stale_status_when_ttl_expired(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    stub = _patch_agent(monkeypatch)
+
+    async def _fake_status(_session, *, conversation_id):
+        _ = conversation_id
+        return SimpleNamespace(
+            alive=False,
+            session_id="session-ttl",
+            request_sequence=7,
+            reason="ttl_expired",
+            last_used_at=None,
+            available_files=[],
+        )
+
+    monkeypatch.setattr(agents_api, "get_conversation_sandbox_status", _fake_status)
+    client = TestClient(app)
+    response = client.post("/api/agent/stream", json={"message": "hello"})
+    assert response.status_code == 200
+
+    assert stub.last_payload is not None
+    texts = _payload_message_texts(stub.last_payload["messages"])
+    assert any("sandbox_session_alive: false" in text for text in texts)
+    assert any("sandbox_status_reason: ttl_expired" in text for text in texts)
+
+
+def test_stream_injects_status_when_container_missing(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    stub = _patch_agent(monkeypatch)
+
+    async def _fake_status(_session, *, conversation_id):
+        _ = conversation_id
+        return SimpleNamespace(
+            alive=False,
+            session_id="session-dead",
+            request_sequence=2,
+            reason="container_not_running",
+            last_used_at=None,
+            available_files=[],
+        )
+
+    monkeypatch.setattr(agents_api, "get_conversation_sandbox_status", _fake_status)
+    client = TestClient(app)
+    response = client.post("/api/agent/stream", json={"message": "hello"})
+    assert response.status_code == 200
+
+    assert stub.last_payload is not None
+    texts = _payload_message_texts(stub.last_payload["messages"])
+    assert any("sandbox_session_alive: false" in text for text in texts)
+    assert any("sandbox_status_reason: container_not_running" in text for text in texts)
 
 
 def test_stream_persists_reasoning_kind_in_interleaved_order(monkeypatch):
@@ -758,6 +851,20 @@ def test_stream_schema_endpoint():
     assert "oneOf" in schema or "anyOf" in schema
     rendered = json.dumps(schema)
     assert "sandbox_status" in rendered
+
+
+def test_reset_sandbox_endpoint(monkeypatch):
+    _patch_memory_store(monkeypatch)
+
+    async def _fake_reset(_session, *, conversation_id):
+        _ = conversation_id
+        return True
+
+    monkeypatch.setattr(agent_router_api, "reset_conversation_sandbox", _fake_reset)
+    client = TestClient(app)
+    response = client.post(f"/api/agent/conversations/{uuid4()}/sandbox/reset")
+    assert response.status_code == 200
+    assert response.json() == {"reset": True}
 
 
 def test_list_conversations_endpoint(monkeypatch):

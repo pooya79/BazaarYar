@@ -11,6 +11,7 @@ from server.features.attachments import (
     store_generated_artifact,
 )
 from server.features.agent.sandbox.event_bus import emit_sandbox_status, get_request_context
+from server.features.agent.sandbox.session_executor import execute_persistent_sandbox
 from server.features.agent.sandbox.sandbox_executor import execute_sandbox
 from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
 from server.core.config import get_settings
@@ -85,6 +86,7 @@ async def run_python_code(
     context = get_request_context()
     if not attachment_ids and context is not None:
         attachment_ids = list(context.latest_user_attachment_ids)
+    conversation_id = getattr(context, "conversation_id", None) if context is not None else None
 
     run_id = str(uuid4())
 
@@ -111,7 +113,15 @@ async def run_python_code(
                     for item in attachments
                 ],
             )
-            result = await execute_sandbox(sandbox_request, on_status=_status_callback)
+            if conversation_id and settings.sandbox_persist_sessions:
+                result = await execute_persistent_sandbox(
+                    session=session,
+                    conversation_id=conversation_id,
+                    request=sandbox_request,
+                    on_status=_status_callback,
+                )
+            else:
+                result = await execute_sandbox(sandbox_request, on_status=_status_callback)
 
             stored_artifacts = []
             for artifact in result.artifacts:
@@ -151,6 +161,10 @@ async def run_python_code(
                     "stdout_tail": result.stdout_tail,
                     "stderr_tail": result.stderr_tail,
                     "run_id": run_id,
+                    "sandbox_session_id": result.sandbox_session_id,
+                    "sandbox_reused": result.sandbox_reused,
+                    "request_sequence": result.request_sequence,
+                    "queue_wait_ms": result.queue_wait_ms,
                 }
             )
     except Exception as exc:
