@@ -12,6 +12,7 @@ from server.db.models import Message
 from .constants import DEFAULT_TOKENIZER_NAME, MODEL_CONTEXT_MESSAGE_KINDS
 from .errors import AttachmentNotFoundError, ConversationNotFoundError
 from .repo import (
+    append_message_content,
     backfill_attachments_from_legacy_json,
     create_conversation,
     delete_conversation,
@@ -118,6 +119,7 @@ __all__ = [
     "ConversationNotFoundError",
     "DEFAULT_TOKENIZER_NAME",
     "MODEL_CONTEXT_MESSAGE_KINDS",
+    "append_message_content",
     "backfill_attachments_from_legacy_json",
     "build_context_window_for_model",
     "create_conversation",

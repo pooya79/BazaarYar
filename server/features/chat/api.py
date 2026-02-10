@@ -54,9 +54,10 @@ class ConversationMessageResponse(BaseModel):
     content: str
     token_estimate: int
     tokenizer_name: str | None
-    message_kind: Literal["normal", "summary", "meta", "tool_call", "tool_result"]
+    message_kind: Literal["normal", "summary", "meta", "reasoning", "tool_call", "tool_result"]
     archived_at: datetime | None
     usage_json: dict[str, Any] | None
+    reasoning_tokens: int | None
     created_at: datetime
     attachments: list[ConversationAttachmentResponse]
 
@@ -87,8 +88,10 @@ class StarConversationRequest(BaseModel):
     starred: bool
 
 
-def _coerce_message_kind(kind: str) -> Literal["normal", "summary", "meta", "tool_call", "tool_result"]:
-    allowed = {"normal", "summary", "meta", "tool_call", "tool_result"}
+def _coerce_message_kind(
+    kind: str,
+) -> Literal["normal", "summary", "meta", "reasoning", "tool_call", "tool_result"]:
+    allowed = {"normal", "summary", "meta", "reasoning", "tool_call", "tool_result"}
     if kind not in allowed:
         return "meta"
     return kind  # type: ignore[return-value]
@@ -123,6 +126,7 @@ def _to_message_response(message: Message) -> ConversationMessageResponse:
         message_kind=_coerce_message_kind(message.message_kind),
         archived_at=message.archived_at,
         usage_json=message.usage_json,
+        reasoning_tokens=message.reasoning_tokens,
         created_at=message.created_at,
         attachments=attachment_payload,
     )

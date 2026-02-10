@@ -144,6 +144,7 @@ class _MemoryStore:
         tokenizer_name="char4_approx_v1",
         message_kind="normal",
         usage_json=None,
+        reasoning_tokens=None,
     ):
         return self._save_message(
             conversation_id=conversation_id,
@@ -153,6 +154,7 @@ class _MemoryStore:
             token_estimate=token_estimate,
             tokenizer_name=tokenizer_name,
             usage_json=usage_json,
+            reasoning_tokens=reasoning_tokens,
             attachment_ids=[],
         )
 
@@ -167,6 +169,7 @@ class _MemoryStore:
         tokenizer_name="char4_approx_v1",
         message_kind="tool_result",
         usage_json=None,
+        reasoning_tokens=None,
     ):
         return self._save_message(
             conversation_id=conversation_id,
@@ -176,8 +179,18 @@ class _MemoryStore:
             token_estimate=token_estimate,
             tokenizer_name=tokenizer_name,
             usage_json=usage_json,
+            reasoning_tokens=reasoning_tokens,
             attachment_ids=attachment_ids,
         )
+
+    async def append_message_content(self, _session, *, message_id, content_suffix):
+        for items in self.messages.values():
+            for message in items:
+                if str(message.id) != str(message_id):
+                    continue
+                message.content = f"{message.content}{content_suffix}"
+                return message
+        raise ValueError(f"Message '{message_id}' was not found.")
 
     def _save_message(
         self,
@@ -190,6 +203,7 @@ class _MemoryStore:
         tokenizer_name,
         attachment_ids,
         usage_json=None,
+        reasoning_tokens=None,
     ):
         conversation_key = str(conversation_id)
         now = datetime.now(timezone.utc)
@@ -209,6 +223,7 @@ class _MemoryStore:
             message_kind=message_kind,
             archived_at=None,
             usage_json=usage_json,
+            reasoning_tokens=reasoning_tokens,
             created_at=now,
             attachment_links=links,
         )
@@ -330,6 +345,7 @@ def _patch_memory_store(monkeypatch):
         "save_assistant_message_with_attachments",
         store.save_assistant_message_with_attachments,
     )
+    monkeypatch.setattr(agents_api, "append_message_content", store.append_message_content)
     monkeypatch.setattr(agents_api, "build_context_window_for_model", store.build_context_window_for_model)
     monkeypatch.setattr(conversations_api, "list_conversations", store.list_conversations)
     monkeypatch.setattr(conversations_api, "get_conversation_summary", store.get_conversation_summary)
@@ -519,6 +535,112 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     messages = reload_response.json()["messages"]
     tool_result_message = next(item for item in messages if item["message_kind"] == "tool_result")
     assert tool_result_message["attachments"][0]["id"] == artifact.id
+
+
+def test_stream_persists_reasoning_kind_in_interleaved_order(monkeypatch):
+    _patch_memory_store(monkeypatch)
+
+    class _InterleavedReasoningStubAgent:
+        async def ainvoke(self, payload):
+            return {"messages": payload["messages"]}
+
+        async def astream(self, payload, stream_mode=("messages", "updates")):
+            tool_call = {
+                "id": "call-interleave",
+                "name": "utc_time",
+                "args": {},
+                "type": "tool_call",
+            }
+            ai_with_tool = AIMessage(
+                content=[{"type": "text", "text": "Calling tool."}],
+                tool_calls=[tool_call],
+                usage_metadata={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                response_metadata={"model_name": "gpt-4.1-mini"},
+            )
+            tool_msg = ToolMessage(
+                content="2026-02-03T00:00:00Z",
+                tool_call_id="call-interleave",
+            )
+            final_msg = AIMessage(
+                content=[{"type": "text", "text": "Done."}],
+                usage_metadata={
+                    "input_tokens": 2,
+                    "output_tokens": 3,
+                    "total_tokens": 5,
+                    "output_token_details": {"reasoning_tokens": 11},
+                },
+                response_metadata={"model_name": "gpt-4.1-mini"},
+            )
+
+            if "messages" in stream_mode and "updates" in stream_mode:
+                from langchain_core.messages import AIMessageChunk
+
+                first_reasoning = AIMessageChunk(
+                    content=[],
+                    additional_kwargs={"reasoning_content": "First reasoning phase. "},
+                )
+                second_reasoning = AIMessageChunk(
+                    content=[],
+                    additional_kwargs={"reasoning_content": "Second reasoning phase."},
+                )
+                final_text = AIMessageChunk(content=[{"type": "text", "text": "Done"}])
+                yield ("messages", (first_reasoning, {"langgraph_node": "model"}))
+                yield ("updates", {"model": {"messages": [*payload["messages"], ai_with_tool]}})
+                yield ("messages", (second_reasoning, {"langgraph_node": "model"}))
+                yield ("updates", {"tools": {"messages": [tool_msg]}})
+                yield ("messages", (final_text, {"langgraph_node": "model"}))
+                yield ("updates", {"model": {"messages": [final_msg]}})
+                return
+
+            if "messages" in stream_mode:
+                from langchain_core.messages import AIMessageChunk
+
+                yield (
+                    "messages",
+                    (
+                        AIMessageChunk(
+                            content=[],
+                            additional_kwargs={"reasoning_content": "First reasoning phase. "},
+                        ),
+                        {"langgraph_node": "model"},
+                    ),
+                )
+                yield ("messages", (AIMessageChunk(content=[{"type": "text", "text": "Done"}]), {"langgraph_node": "model"}))
+
+            if "updates" in stream_mode:
+                yield ("updates", {"model": {"messages": [*payload["messages"], ai_with_tool]}})
+                yield ("updates", {"tools": {"messages": [tool_msg]}})
+                yield ("updates", {"model": {"messages": [final_msg]}})
+
+    monkeypatch.setattr(agents_api, "get_agent", lambda: _InterleavedReasoningStubAgent())
+    client = TestClient(app)
+
+    final_payload = None
+    with client.stream(
+        "POST",
+        "/api/agent/stream",
+        json={"message": "Stream with interleaved reasoning"},
+    ) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            payload = json.loads(line.removeprefix("data: "))
+            if payload["type"] == "final":
+                final_payload = payload
+
+    assert final_payload is not None
+    conversation_id = final_payload["conversation_id"]
+    reload_response = client.get(f"/api/conversations/{conversation_id}")
+    assert reload_response.status_code == 200
+    messages = reload_response.json()["messages"]
+
+    assert messages[1]["message_kind"] == "reasoning"
+    assert messages[2]["message_kind"] == "tool_call"
+    assert messages[3]["message_kind"] == "reasoning"
+    assert messages[4]["message_kind"] == "tool_result"
+    assert messages[5]["message_kind"] == "normal"
+    assert messages[5]["reasoning_tokens"] == 11
 
 
 def test_stream_emits_sandbox_status_events(monkeypatch):

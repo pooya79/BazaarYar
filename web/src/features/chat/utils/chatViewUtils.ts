@@ -56,17 +56,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function appendTextBlock(existing: string, nextValue: string) {
-  const trimmed = nextValue.trim();
-  if (!trimmed) {
-    return existing;
-  }
-  if (!existing.trim()) {
-    return trimmed;
-  }
-  return `${existing}\n\n${trimmed}`;
-}
-
 function mapPersistedAttachment(
   attachment: PersistedMessage["attachments"][number],
 ): MessageAttachment {
@@ -187,14 +176,43 @@ function createAssistantTurn(id: string, time: string): AssistantTurn {
     id,
     sender: "assistant",
     time,
-    answerText: "",
-    reasoningText: "",
-    notes: [],
+    blocks: [],
     toolCalls: [],
     attachments: [],
     usage: null,
     responseMetadata: null,
     reasoningTokens: null,
+  };
+}
+
+function withToolBlock(
+  turn: AssistantTurn,
+  {
+    toolKey,
+    sourceId,
+  }: {
+    toolKey: string;
+    sourceId: string;
+  },
+): AssistantTurn {
+  if (
+    turn.blocks.some(
+      (block) => block.type === "tool_call" && block.toolKey === toolKey,
+    )
+  ) {
+    return turn;
+  }
+
+  return {
+    ...turn,
+    blocks: [
+      ...turn.blocks,
+      {
+        id: `${turn.id}:block:tool:${sourceId}`,
+        type: "tool_call",
+        toolKey,
+      },
+    ],
   };
 }
 
@@ -243,11 +261,18 @@ function attachResultToTurn(
     status: "completed",
   };
 
-  return {
+  let updated = {
     ...turn,
     toolCalls,
     attachments: mergeAttachments(turn.attachments, artifacts),
   };
+
+  updated = withToolBlock(updated, {
+    toolKey: toolCalls[targetIndex].key,
+    sourceId: fallbackKey,
+  });
+
+  return updated;
 }
 
 export function extractReasoningTokens(
@@ -280,12 +305,14 @@ export function groupConversationMessages(
   messages: PersistedMessage[],
 ): ChatTimelineItem[] {
   const timeline: ChatTimelineItem[] = [];
-  const sortedMessages = messages
-    .slice()
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+  const sortedMessages = messages.slice().sort((a, b) => {
+    const createdDelta =
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (createdDelta !== 0) {
+      return createdDelta;
+    }
+    return a.id.localeCompare(b.id);
+  });
 
   let activeTurn: AssistantTurn | null = null;
 
@@ -322,21 +349,49 @@ export function groupConversationMessages(
       );
     }
 
+    if (typeof message.reasoningTokens === "number") {
+      activeTurn.reasoningTokens = message.reasoningTokens;
+    }
     if (message.usageJson) {
       activeTurn.usage = message.usageJson;
-      activeTurn.reasoningTokens = extractReasoningTokens(message.usageJson);
+      if (activeTurn.reasoningTokens === null) {
+        activeTurn.reasoningTokens = extractReasoningTokens(message.usageJson);
+      }
     }
 
     if (message.messageKind === "normal") {
-      activeTurn.answerText = appendTextBlock(
-        activeTurn.answerText,
-        message.content,
-      );
+      activeTurn.blocks = [
+        ...activeTurn.blocks,
+        {
+          id: `${activeTurn.id}:block:text:${message.id}`,
+          type: "text",
+          content: message.content,
+        },
+      ];
+      continue;
+    }
+
+    if (message.messageKind === "reasoning") {
+      activeTurn.blocks = [
+        ...activeTurn.blocks,
+        {
+          id: `${activeTurn.id}:block:reasoning:${message.id}`,
+          type: "reasoning",
+          content: message.content,
+        },
+      ];
       continue;
     }
 
     if (message.messageKind === "summary") {
-      activeTurn.notes = [...activeTurn.notes, `summary\n${message.content}`];
+      activeTurn.blocks = [
+        ...activeTurn.blocks,
+        {
+          id: `${activeTurn.id}:block:note:summary:${message.id}`,
+          type: "note",
+          content: `summary\n${message.content}`,
+        },
+      ];
       continue;
     }
 
@@ -351,9 +406,18 @@ export function groupConversationMessages(
         const next = activeTurn.toolCalls.slice();
         next[existingIndex] = { ...next[existingIndex], ...parsed };
         activeTurn.toolCalls = next;
+        activeTurn = withToolBlock(activeTurn, {
+          toolKey: next[existingIndex].key,
+          sourceId: message.id,
+        });
       } else {
         activeTurn.toolCalls = [...activeTurn.toolCalls, parsed];
+        activeTurn = withToolBlock(activeTurn, {
+          toolKey: parsed.key,
+          sourceId: message.id,
+        });
       }
+      timeline[timeline.length - 1] = activeTurn;
       continue;
     }
 
@@ -373,14 +437,38 @@ export function groupConversationMessages(
       const parsed = parseMetaBlock(message.content);
       if (parsed?.label === "usage" && isRecord(parsed.payload)) {
         activeTurn.usage = parsed.payload;
-        activeTurn.reasoningTokens = extractReasoningTokens(parsed.payload);
+        if (activeTurn.reasoningTokens === null) {
+          activeTurn.reasoningTokens = extractReasoningTokens(parsed.payload);
+        }
         continue;
       }
       if (parsed?.label === "response_metadata" && isRecord(parsed.payload)) {
         activeTurn.responseMetadata = parsed.payload;
         continue;
       }
-      activeTurn.notes = [...activeTurn.notes, message.content];
+      if (parsed?.label === "reasoning") {
+        const reasoningText =
+          typeof parsed.payload === "string"
+            ? parsed.payload
+            : JSON.stringify(parsed.payload, null, 2);
+        activeTurn.blocks = [
+          ...activeTurn.blocks,
+          {
+            id: `${activeTurn.id}:block:reasoning:meta:${message.id}`,
+            type: "reasoning",
+            content: reasoningText,
+          },
+        ];
+        continue;
+      }
+      activeTurn.blocks = [
+        ...activeTurn.blocks,
+        {
+          id: `${activeTurn.id}:block:note:meta:${message.id}`,
+          type: "note",
+          content: message.content,
+        },
+      ];
     }
   }
 

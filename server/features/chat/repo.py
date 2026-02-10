@@ -212,9 +212,10 @@ async def save_assistant_message(
     tokenizer_name: str = DEFAULT_TOKENIZER_NAME,
     message_kind: str = "normal",
     usage_json: dict[str, Any] | None = None,
+    reasoning_tokens: int | None = None,
 ) -> Message:
     conversation = await ensure_conversation(session, conversation_id)
-    clean_content = content.strip()
+    clean_content = content if message_kind == "reasoning" else content.strip()
     message = Message(
         conversation_id=conversation.id,
         role="assistant",
@@ -223,9 +224,26 @@ async def save_assistant_message(
         tokenizer_name=tokenizer_name,
         message_kind=message_kind,
         usage_json=usage_json,
+        reasoning_tokens=reasoning_tokens,
     )
     session.add(message)
     conversation.updated_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(message)
+    return message
+
+
+async def append_message_content(
+    session: AsyncSession,
+    *,
+    message_id: UUID | str,
+    content_suffix: str,
+) -> Message:
+    message = await session.get(Message, to_uuid(message_id))
+    if message is None:
+        raise ValueError(f"Message '{message_id}' was not found.")
+
+    message.content = f"{message.content}{content_suffix}"
     await session.commit()
     await session.refresh(message)
     return message

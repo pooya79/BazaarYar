@@ -23,13 +23,23 @@ export type ToolCallEntry = {
   status: "streaming" | "called" | "completed";
 };
 
+export type AssistantContentBlock =
+  | {
+      id: string;
+      type: "text" | "reasoning" | "note";
+      content: string;
+    }
+  | {
+      id: string;
+      type: "tool_call";
+      toolKey: string;
+    };
+
 export type AssistantTurn = {
   id: string;
   sender: "assistant";
   time: string;
-  answerText: string;
-  reasoningText: string;
-  notes: string[];
+  blocks: AssistantContentBlock[];
   toolCalls: ToolCallEntry[];
   attachments: MessageAttachment[];
   usage?: Record<string, unknown> | null;

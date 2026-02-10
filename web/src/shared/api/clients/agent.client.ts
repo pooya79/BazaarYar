@@ -44,9 +44,16 @@ export type PersistedMessage = {
   content: string;
   tokenEstimate: number;
   tokenizerName?: string | null;
-  messageKind: "normal" | "summary" | "meta" | "tool_call" | "tool_result";
+  messageKind:
+    | "normal"
+    | "summary"
+    | "meta"
+    | "reasoning"
+    | "tool_call"
+    | "tool_result";
   archivedAt?: string | null;
   usageJson?: Record<string, unknown> | null;
+  reasoningTokens?: number | null;
   createdAt: string;
   attachments: PersistedAttachment[];
 };
@@ -158,6 +165,7 @@ const mapPersistedMessage = (
   messageKind: message.message_kind,
   archivedAt: message.archived_at,
   usageJson: message.usage_json,
+  reasoningTokens: message.reasoning_tokens,
   createdAt: message.created_at,
   attachments: message.attachments.map((attachment) => ({
     id: attachment.id,

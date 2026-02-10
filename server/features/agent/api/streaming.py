@@ -41,6 +41,7 @@ from server.features.attachments import (
 from server.features.chat import (
     AttachmentNotFoundError,
     ConversationNotFoundError,
+    append_message_content,
     build_context_window_for_model,
     create_conversation,
     estimate_tokens,
@@ -164,11 +165,39 @@ async def stream_agent_response(
     async def _event_stream():
         queue: asyncio.Queue[Any | None] = asyncio.Queue()
         producer_error: Exception | None = None
+        active_reasoning_message_id: str | None = None
 
         async def _push(event: Any) -> None:
             await queue.put(event)
 
+        def _close_reasoning_phase() -> None:
+            nonlocal active_reasoning_message_id
+            active_reasoning_message_id = None
+
+        async def _persist_reasoning_chunk(content: str) -> None:
+            nonlocal active_reasoning_message_id
+            if not content:
+                return
+
+            await _push(ReasoningDeltaEvent(content=content))
+            if active_reasoning_message_id is None:
+                message = await save_assistant_message(
+                    session,
+                    conversation_id=conversation.id,
+                    content=content,
+                    message_kind="reasoning",
+                )
+                active_reasoning_message_id = str(message.id)
+                return
+
+            await append_message_content(
+                session,
+                message_id=active_reasoning_message_id,
+                content_suffix=content,
+            )
+
         async def _on_sandbox_status(payload: Any) -> None:
+            _close_reasoning_phase()
             await _push(
                 SandboxStatusEvent(
                     run_id=payload.run_id,
@@ -201,8 +230,9 @@ async def stream_agent_response(
                                     "reasoning_content"
                                 )
                                 if reasoning_chunk:
-                                    await _push(ReasoningDeltaEvent(content=str(reasoning_chunk)))
+                                    await _persist_reasoning_chunk(str(reasoning_chunk))
                                 for chunk in token.tool_call_chunks:
+                                    _close_reasoning_phase()
                                     await _push(
                                         ToolCallDeltaEvent(
                                             id=chunk.get("id"),
@@ -229,12 +259,14 @@ async def stream_agent_response(
                                                 or block.get("summary")
                                             )
                                             if value:
-                                                await _push(ReasoningDeltaEvent(content=str(value)))
+                                                await _persist_reasoning_chunk(str(value))
                                         if block_type in {"text", "output_text"}:
                                             value = block.get("text") or block.get("output_text")
                                             if value:
+                                                _close_reasoning_phase()
                                                 await _push(TextDeltaEvent(content=str(value)))
                                 elif isinstance(content_blocks, str) and content_blocks:
+                                    _close_reasoning_phase()
                                     await _push(TextDeltaEvent(content=content_blocks))
                         elif stream_mode == "updates":
                             for _, update in data.items():
@@ -245,6 +277,7 @@ async def stream_agent_response(
                                 if isinstance(msg, AIMessage):
                                     if msg.tool_calls:
                                         for call in msg.tool_calls:
+                                            _close_reasoning_phase()
                                             await _push(
                                                 ToolCallEvent(
                                                     id=call.get("id"),
@@ -269,6 +302,7 @@ async def stream_agent_response(
                                         attachment_ids=artifact_ids,
                                     )
 
+                                    _close_reasoning_phase()
                                     await _push(
                                         ToolResultEvent(
                                             tool_call_id=msg.tool_call_id,
@@ -301,7 +335,13 @@ async def stream_agent_response(
                                         )
 
                 if final_ai is not None:
+                    _close_reasoning_phase()
                     usage = extract_usage(final_ai)
+                    reasoning_tokens = (
+                        usage.get("reasoning_tokens")
+                        if isinstance(usage, dict) and isinstance(usage.get("reasoning_tokens"), int)
+                        else None
+                    )
                     response_meta = getattr(final_ai, "response_metadata", None)
                     _, final_text_parts = split_ai_content(final_ai)
                     final_text = "".join(final_text_parts).strip()
@@ -312,6 +352,7 @@ async def stream_agent_response(
                         content=final_text or "[empty assistant response]",
                         token_estimate=estimate_tokens(final_text or ""),
                         usage_json=usage if isinstance(usage, dict) else None,
+                        reasoning_tokens=reasoning_tokens,
                     )
 
                     usage_text = format_meta_block("usage", usage)

@@ -125,47 +125,54 @@ export function AssistantMessageCard({
   onToolSelect,
 }: AssistantMessageCardProps) {
   const footer = buildFooter(turn);
+  const toolsByKey = new Map(turn.toolCalls.map((tool) => [tool.key, tool]));
 
   return (
     <Card className="gap-0 rounded-xl rounded-bl-[4px] border-marketing-border bg-marketing-surface py-0 text-marketing-text-primary shadow-marketing-subtle">
       <CardContent className="space-y-3 px-4 py-3.5 text-[0.9375rem] leading-relaxed">
-        {turn.answerText ? (
-          <div className="whitespace-pre-line">{turn.answerText}</div>
-        ) : null}
+        {turn.blocks.map((block) => {
+          if (block.type === "text") {
+            return (
+              <div key={block.id} className="whitespace-pre-line">
+                {block.content}
+              </div>
+            );
+          }
 
-        {turn.reasoningText ? (
-          <div className="rounded-lg border border-dashed border-marketing-border bg-marketing-surface-translucent px-3 py-2 text-xs whitespace-pre-line text-marketing-text-secondary">
-            {turn.reasoningText}
-          </div>
-        ) : null}
+          if (block.type === "reasoning") {
+            return (
+              <div
+                key={block.id}
+                className="rounded-lg border border-dashed border-marketing-border bg-marketing-surface-translucent px-3 py-2 text-xs whitespace-pre-line text-marketing-text-secondary"
+              >
+                {block.content}
+              </div>
+            );
+          }
 
-        {turn.toolCalls.length > 0 ? (
-          <div className="space-y-2">
-            <div className="text-[0.65rem] uppercase tracking-[0.08em] text-marketing-text-muted">
-              Tool calls
-            </div>
-            <div className="space-y-2">
-              {turn.toolCalls.map((tool) => (
-                <ToolCallRow
-                  key={tool.key}
-                  tool={tool}
-                  onClick={() => onToolSelect(tool.key)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {turn.notes.length > 0
-          ? turn.notes.map((note, index) => (
+          if (block.type === "note") {
+            return (
               <pre
-                key={`${turn.id}:note:${index}`}
+                key={block.id}
                 className="overflow-x-auto rounded-lg border border-dashed border-marketing-border bg-marketing-surface-translucent px-3 py-2 text-xs whitespace-pre-wrap text-marketing-text-muted"
               >
-                {note}
+                {block.content}
               </pre>
-            ))
-          : null}
+            );
+          }
+
+          const tool = toolsByKey.get(block.toolKey);
+          if (!tool) {
+            return null;
+          }
+          return (
+            <ToolCallRow
+              key={block.id}
+              tool={tool}
+              onClick={() => onToolSelect(tool.key)}
+            />
+          );
+        })}
 
         <MessageAttachments attachments={turn.attachments} />
       </CardContent>

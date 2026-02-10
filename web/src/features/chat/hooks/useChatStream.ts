@@ -31,16 +31,22 @@ type StreamState = {
   assistantTurnId: string | null;
   toolKeysByIndex: Map<number, string>;
   toolKeysByCallId: Map<string, string>;
-  sandboxNoteIndexByRunId: Map<string, number>;
+  sandboxNoteBlockIdByRunId: Map<string, string>;
   nextToolSeq: number;
+  nextBlockSeq: number;
+  activeTextBlockId: string | null;
+  activeReasoningBlockId: string | null;
 };
 
 const initialStreamState = (): StreamState => ({
   assistantTurnId: null,
   toolKeysByIndex: new Map(),
   toolKeysByCallId: new Map(),
-  sandboxNoteIndexByRunId: new Map(),
+  sandboxNoteBlockIdByRunId: new Map(),
   nextToolSeq: 0,
+  nextBlockSeq: 0,
+  activeTextBlockId: null,
+  activeReasoningBlockId: null,
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +68,10 @@ function mergeAttachments(
     byId.set(attachment.id, attachment);
   }
   return Array.from(byId.values());
+}
+
+function blockId(turnId: string, type: string, seq: number) {
+  return `${turnId}:block:${type}:${seq}`;
 }
 
 export function useChatStream({
@@ -131,6 +141,81 @@ export function useChatStream({
     return turn.id;
   }, [createAssistantTurn, setTimeline]);
 
+  const pushAssistantBlock = useCallback(
+    (
+      turn: AssistantTurn,
+      type: "text" | "reasoning" | "note",
+      content: string,
+      blockIdValue?: string,
+    ) => {
+      const id =
+        blockIdValue ??
+        blockId(turn.id, type, streamStateRef.current.nextBlockSeq++);
+      return {
+        ...turn,
+        blocks: [...turn.blocks, { id, type, content }],
+      };
+    },
+    [],
+  );
+
+  const closeStreamTextPhases = useCallback(() => {
+    streamStateRef.current.activeTextBlockId = null;
+    streamStateRef.current.activeReasoningBlockId = null;
+  }, []);
+
+  const appendAssistantTextBlock = useCallback(
+    (type: "text" | "reasoning", chunk: string) => {
+      if (!chunk) {
+        return;
+      }
+
+      const turnId = ensureActiveAssistantTurn();
+      updateAssistantTurn(turnId, (turn) => {
+        const state = streamStateRef.current;
+        const targetId =
+          type === "text"
+            ? state.activeTextBlockId
+            : state.activeReasoningBlockId;
+
+        if (targetId) {
+          const targetIndex = turn.blocks.findIndex(
+            (block) => block.id === targetId,
+          );
+          if (targetIndex >= 0) {
+            const existing = turn.blocks[targetIndex];
+            if (existing.type === type) {
+              const nextBlocks = turn.blocks.slice();
+              nextBlocks[targetIndex] = {
+                ...existing,
+                content: `${existing.content}${chunk}`,
+              };
+              return {
+                ...turn,
+                blocks: nextBlocks,
+              };
+            }
+          }
+        }
+
+        const newId = blockId(turn.id, type, state.nextBlockSeq++);
+        if (type === "text") {
+          state.activeTextBlockId = newId;
+          state.activeReasoningBlockId = null;
+        } else {
+          state.activeReasoningBlockId = newId;
+          state.activeTextBlockId = null;
+        }
+
+        return {
+          ...turn,
+          blocks: [...turn.blocks, { id: newId, type, content: chunk }],
+        };
+      });
+    },
+    [ensureActiveAssistantTurn, updateAssistantTurn],
+  );
+
   const addAssistantNote = useCallback(
     (note: string) => {
       setTimeline((prev) => {
@@ -140,18 +225,15 @@ export function useChatStream({
             if (item.id !== lastItem.id || item.sender !== "assistant") {
               return item;
             }
-            return {
-              ...item,
-              notes: [...item.notes, note],
-            };
+            return pushAssistantBlock(item, "note", note);
           });
         }
 
         const turn = createAssistantTurn();
-        return [...prev, { ...turn, notes: [note] }];
+        return [...prev, pushAssistantBlock(turn, "note", note)];
       });
     },
-    [createAssistantTurn, setTimeline],
+    [createAssistantTurn, pushAssistantBlock, setTimeline],
   );
 
   const addUserMessage = useCallback(
@@ -170,26 +252,28 @@ export function useChatStream({
     [createLocalId, setTimeline],
   );
 
-  const appendAssistantAnswer = useCallback(
-    (chunk: string) => {
-      const turnId = ensureActiveAssistantTurn();
-      updateAssistantTurn(turnId, (turn) => ({
+  const ensureToolBlock = useCallback(
+    (turn: AssistantTurn, toolKey: string) => {
+      if (
+        turn.blocks.some(
+          (block) => block.type === "tool_call" && block.toolKey === toolKey,
+        )
+      ) {
+        return turn;
+      }
+      return {
         ...turn,
-        answerText: `${turn.answerText}${chunk}`,
-      }));
+        blocks: [
+          ...turn.blocks,
+          {
+            id: blockId(turn.id, "tool", streamStateRef.current.nextBlockSeq++),
+            type: "tool_call",
+            toolKey,
+          },
+        ],
+      };
     },
-    [ensureActiveAssistantTurn, updateAssistantTurn],
-  );
-
-  const appendAssistantReasoning = useCallback(
-    (chunk: string) => {
-      const turnId = ensureActiveAssistantTurn();
-      updateAssistantTurn(turnId, (turn) => ({
-        ...turn,
-        reasoningText: `${turn.reasoningText}${chunk}`,
-      }));
-    },
-    [ensureActiveAssistantTurn, updateAssistantTurn],
+    [],
   );
 
   const startStream = useCallback(
@@ -217,16 +301,19 @@ export function useChatStream({
             }
 
             if (event.type === "text_delta") {
-              appendAssistantAnswer(event.content);
+              streamStateRef.current.activeReasoningBlockId = null;
+              appendAssistantTextBlock("text", event.content);
               return;
             }
 
             if (event.type === "reasoning_delta") {
-              appendAssistantReasoning(event.content);
+              streamStateRef.current.activeTextBlockId = null;
+              appendAssistantTextBlock("reasoning", event.content);
               return;
             }
 
             if (event.type === "tool_call_delta") {
+              closeStreamTextPhases();
               const turnId = ensureActiveAssistantTurn();
               const streamIndex =
                 typeof event.index === "number" ? event.index : null;
@@ -262,19 +349,23 @@ export function useChatStream({
                   if (event.id) {
                     streamStateRef.current.toolKeysByCallId.set(event.id, key);
                   }
-                  return {
-                    ...turn,
-                    toolCalls: [
-                      ...toolCalls,
-                      {
-                        key,
-                        name: event.name ?? "unknown",
-                        callId: event.id,
-                        streamedArgsText: event.args ?? "",
-                        status: "streaming",
-                      },
-                    ],
-                  };
+
+                  return ensureToolBlock(
+                    {
+                      ...turn,
+                      toolCalls: [
+                        ...toolCalls,
+                        {
+                          key,
+                          name: event.name ?? "unknown",
+                          callId: event.id,
+                          streamedArgsText: event.args ?? "",
+                          status: "streaming",
+                        },
+                      ],
+                    },
+                    key,
+                  );
                 }
 
                 const current = toolCalls[targetIndex];
@@ -301,15 +392,19 @@ export function useChatStream({
                   );
                 }
 
-                return {
-                  ...turn,
-                  toolCalls,
-                };
+                return ensureToolBlock(
+                  {
+                    ...turn,
+                    toolCalls,
+                  },
+                  toolCalls[targetIndex].key,
+                );
               });
               return;
             }
 
             if (event.type === "tool_call") {
+              closeStreamTextPhases();
               const turnId = ensureActiveAssistantTurn();
               const mappedKey = event.id?.trim()
                 ? streamStateRef.current.toolKeysByCallId.get(event.id)
@@ -387,15 +482,19 @@ export function useChatStream({
                   );
                 }
 
-                return {
-                  ...turn,
-                  toolCalls,
-                };
+                return ensureToolBlock(
+                  {
+                    ...turn,
+                    toolCalls,
+                  },
+                  toolCalls[targetIndex].key,
+                );
               });
               return;
             }
 
             if (event.type === "tool_result") {
+              closeStreamTextPhases();
               const attachments =
                 event.artifacts?.map((artifact) => ({
                   id: artifact.id,
@@ -467,57 +566,113 @@ export function useChatStream({
                   );
                 }
 
-                return {
-                  ...turn,
-                  toolCalls,
-                  attachments: mergeAttachments(turn.attachments, attachments),
-                };
+                return ensureToolBlock(
+                  {
+                    ...turn,
+                    toolCalls,
+                    attachments: mergeAttachments(
+                      turn.attachments,
+                      attachments,
+                    ),
+                  },
+                  toolCalls[targetIndex].key,
+                );
               });
               return;
             }
 
             if (event.type === "sandbox_status") {
+              closeStreamTextPhases();
               const turnId = ensureActiveAssistantTurn();
               const nextText = formatSandboxStatus(event);
               updateAssistantTurn(turnId, (turn) => {
-                const notes = turn.notes.slice();
-                const existingIndex =
-                  streamStateRef.current.sandboxNoteIndexByRunId.get(
+                const noteBlockId =
+                  streamStateRef.current.sandboxNoteBlockIdByRunId.get(
                     event.run_id,
                   );
-
-                if (existingIndex === undefined) {
-                  notes.push(nextText);
-                  streamStateRef.current.sandboxNoteIndexByRunId.set(
-                    event.run_id,
-                    notes.length - 1,
+                if (!noteBlockId) {
+                  const newBlockId = blockId(
+                    turn.id,
+                    "note",
+                    streamStateRef.current.nextBlockSeq++,
                   );
-                } else {
-                  notes[existingIndex] = nextText;
+                  streamStateRef.current.sandboxNoteBlockIdByRunId.set(
+                    event.run_id,
+                    newBlockId,
+                  );
+                  return {
+                    ...turn,
+                    blocks: [
+                      ...turn.blocks,
+                      { id: newBlockId, type: "note", content: nextText },
+                    ],
+                  };
                 }
 
+                const noteIndex = turn.blocks.findIndex(
+                  (block) => block.id === noteBlockId,
+                );
+                if (noteIndex < 0) {
+                  return turn;
+                }
+
+                const nextBlocks = turn.blocks.slice();
+                const current = nextBlocks[noteIndex];
+                if (current.type !== "note") {
+                  return turn;
+                }
+
+                nextBlocks[noteIndex] = {
+                  ...current,
+                  content: nextText,
+                };
                 return {
                   ...turn,
-                  notes,
+                  blocks: nextBlocks,
                 };
               });
               return;
             }
 
             if (event.type === "final") {
+              closeStreamTextPhases();
               const turnId = ensureActiveAssistantTurn();
               updateAssistantTurn(turnId, (turn) => {
                 const usage = isRecord(event.usage) ? event.usage : null;
                 const responseMetadata = isRecord(event.response_metadata)
                   ? event.response_metadata
                   : null;
+                const extractedReasoning = extractReasoningTokens(usage);
+
+                const hasTextBlock = turn.blocks.some(
+                  (block) =>
+                    block.type === "text" && block.content.trim().length > 0,
+                );
+                const shouldAppendFinalText =
+                  !hasTextBlock && Boolean(event.output_text.trim());
+
+                const nextBlocks = shouldAppendFinalText
+                  ? [
+                      ...turn.blocks,
+                      {
+                        id: blockId(
+                          turn.id,
+                          "text",
+                          streamStateRef.current.nextBlockSeq++,
+                        ),
+                        type: "text" as const,
+                        content: event.output_text,
+                      },
+                    ]
+                  : turn.blocks;
 
                 return {
                   ...turn,
-                  answerText: event.output_text,
+                  blocks: nextBlocks,
                   usage,
                   responseMetadata,
-                  reasoningTokens: extractReasoningTokens(usage),
+                  reasoningTokens:
+                    extractedReasoning ?? turn.reasoningTokens ?? null,
                   time: formatTime(new Date()),
                 };
               });
@@ -556,9 +711,10 @@ export function useChatStream({
       abortStream,
       activeChatId,
       addAssistantNote,
-      appendAssistantAnswer,
-      appendAssistantReasoning,
+      appendAssistantTextBlock,
+      closeStreamTextPhases,
       ensureActiveAssistantTurn,
+      ensureToolBlock,
       onConversationRedirect,
       resetStreamState,
       updateAssistantTurn,

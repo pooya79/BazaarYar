@@ -50,11 +50,13 @@ export const conversationMessageSchema = z.object({
     "normal",
     "summary",
     "meta",
+    "reasoning",
     "tool_call",
     "tool_result",
   ]),
   archived_at: z.string().nullable().optional(),
   usage_json: z.record(z.string(), z.unknown()).nullable().optional(),
+  reasoning_tokens: z.number().int().nullable().optional(),
   created_at: z.string(),
   attachments: z.array(conversationAttachmentSchema),
 });

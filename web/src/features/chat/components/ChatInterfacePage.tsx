@@ -47,9 +47,7 @@ export function ChatInterfacePage() {
       id: createLocalId(),
       sender: "assistant",
       time: formatTime(new Date()),
-      answerText: "",
-      reasoningText: "",
-      notes: [],
+      blocks: [],
       toolCalls: [],
       attachments: [],
       usage: null,
@@ -61,9 +59,15 @@ export function ChatInterfacePage() {
   const createLoadErrorTurn = useCallback(
     (note: string): AssistantTurn => ({
       ...createAssistantTurn(),
-      notes: [note],
+      blocks: [
+        {
+          id: `${createLocalId()}:note:load-error`,
+          type: "note",
+          content: note,
+        },
+      ],
     }),
-    [createAssistantTurn],
+    [createAssistantTurn, createLocalId],
   );
 
   const { activeChatId, timeline, setTimeline, messageInput, setMessageInput } =
