@@ -6,12 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import api_router
 from .core.config import get_settings
 from .db.session import async_engine
+from .features.agent.observability import configure_agent_observability
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    configure_agent_observability()
     try:
         yield
     finally:

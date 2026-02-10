@@ -4,11 +4,11 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  tools as allTools,
   type ChatAction,
   type ChatItem,
   library,
   summarizeConversationMeta,
-  tools,
 } from "@/features/chat";
 import {
   deleteAgentConversation,
@@ -16,6 +16,7 @@ import {
   renameAgentConversation,
   starAgentConversation,
 } from "@/shared/api/clients/agent.client";
+import { env } from "@/shared/api/schemas/env";
 import { cn } from "@/shared/lib/utils";
 import { ChatHeader } from "./ChatHeader";
 import { ChatSidebar } from "./ChatSidebar";
@@ -32,6 +33,13 @@ export function AppShell({ children }: AppShellProps) {
   const [chatItems, setChatItems] = useState<ChatItem[]>([]);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState("assistant");
+  const visibleTools = useMemo(
+    () =>
+      allTools.filter(
+        (item) => item.id !== "phoenix" || Boolean(env.NEXT_PUBLIC_PHOENIX_URL),
+      ),
+    [],
+  );
 
   const isReferenceTablesRoute = pathname.startsWith("/reference-tables");
   const activeChatId = useMemo(() => {
@@ -44,14 +52,14 @@ export function AppShell({ children }: AppShellProps) {
     : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
-    const allItems = [...tools, ...library];
+    const allItems = [...visibleTools, ...library];
     const match =
-      allItems.find((item) => item.id === displayToolId) ?? tools[0];
+      allItems.find((item) => item.id === displayToolId) ?? visibleTools[0];
     return {
       pageTitle: match.label,
       pageIcon: match.icon,
     };
-  }, [displayToolId]);
+  }, [displayToolId, visibleTools]);
 
   const refreshConversations = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -121,6 +129,19 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   const handleToolClick = (toolId: string) => {
+    if (toolId === "phoenix") {
+      if (env.NEXT_PUBLIC_PHOENIX_URL) {
+        window.open(
+          env.NEXT_PUBLIC_PHOENIX_URL,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      }
+      setChatMenuOpenId(null);
+      closeSidebarOnMobile();
+      return;
+    }
+
     setActiveTool(toolId);
     setChatMenuOpenId(null);
     if (toolId === "reference-tables") {
@@ -229,7 +250,7 @@ export function AppShell({ children }: AppShellProps) {
         onChatAction={handleChatAction}
         chatMenuOpenId={chatMenuOpenId}
         onChatMenuOpenChange={setChatMenuOpenId}
-        tools={tools}
+        tools={visibleTools}
         library={library}
         activeTool={displayToolId}
         onToolSelect={handleToolClick}

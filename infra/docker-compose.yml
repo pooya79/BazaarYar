@@ -1,4 +1,14 @@
 services:
+  phoenix:
+    image: arizephoenix/phoenix:${PHOENIX_TAG:-latest}
+    container_name: bazaaryar-phoenix
+    ports:
+      - "${PHOENIX_UI_PORT:-6006}:6006"
+      - "${PHOENIX_GRPC_PORT:-4317}:4317"
+    environment:
+      PHOENIX_WORKING_DIR: ${PHOENIX_WORKING_DIR:-/mnt/data}
+    volumes:
+      - phoenix_data:${PHOENIX_WORKING_DIR:-/mnt/data}
   db:
     image: postgres:18.1
     container_name: bazaaryar-postgres
@@ -38,6 +48,7 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 volumes:
+  phoenix_data:
   postgres_data:
   pgadmin_data:
 configs:

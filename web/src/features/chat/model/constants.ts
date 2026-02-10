@@ -1,11 +1,9 @@
 import {
+  Activity,
   Calendar,
   Globe,
   Mail,
   MessageSquare,
-  PenLine,
-  Search,
-  Smartphone,
   Table,
   Target,
 } from "lucide-react";
@@ -14,11 +12,7 @@ import type { ChatItem, NavItem, QuickAction } from "./types";
 
 export const tools: NavItem[] = [
   { id: "assistant", label: "AI Assistant", icon: MessageSquare },
-  { id: "content", label: "Content Studio", icon: PenLine },
-  { id: "seo", label: "SEO Research", icon: Search },
-  { id: "email", label: "Email Campaigns", icon: Mail },
-  { id: "social", label: "Social Media", icon: Smartphone },
-  { id: "ads", label: "Ad Copy", icon: Target },
+  { id: "phoenix", label: "Phoenix", icon: Activity },
 ];
 
 export const library: NavItem[] = [

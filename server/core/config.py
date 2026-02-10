@@ -47,6 +47,18 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://127.0.0.1:3000",
         validation_alias="FRONTEND_ORIGINS",
     )
+    phoenix_enabled: bool = Field(
+        default=False,
+        validation_alias="PHOENIX_ENABLED",
+    )
+    phoenix_project_name: str = Field(
+        default="bazaaryar-agent",
+        validation_alias="PHOENIX_PROJECT_NAME",
+    )
+    phoenix_collector_endpoint: str = Field(
+        default="http://localhost:4317",
+        validation_alias="PHOENIX_COLLECTOR_ENDPOINT",
+    )
 
     gemini_model: str = Field(
         default="gemini-3-pro-preview",

@@ -1,4 +1,4 @@
-import { ChevronDown, Plus, Settings } from "lucide-react";
+import { ChevronDown, ExternalLink, Plus, Settings } from "lucide-react";
 import type {
   ChatAction,
   ChatItem,
@@ -154,7 +154,15 @@ export function ChatSidebar({
                       <span className="flex w-6 justify-center">
                         <Icon className={iconClass} aria-hidden="true" />
                       </span>
-                      <span>{tool.label}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <span>{tool.label}</span>
+                        {tool.id === "phoenix" ? (
+                          <ExternalLink
+                            className="size-[12px] text-marketing-text-muted"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                      </span>
                     </Button>
                   </li>
                 );

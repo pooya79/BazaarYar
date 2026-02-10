@@ -63,11 +63,13 @@ The agent platform is designed to support:
 
 ### Common Commands (Dev/Quality)
 - Install deps: `make install` (runs `uv sync --group dev` + `pnpm install`).
-- Run dev stack: `make dev` (starts DB + backend + frontend).
+- Run dev stack: `make dev` (starts infra + backend + frontend).
 - Run backend only: `make server`.
 - Run backend tests: `make test-server`
 - Run frontend only: `make web`.
-- Start/stop DB: `make db` / `make db-down`.
+- Start/stop infra services: `make infra` / `make infra-down`.
+- Start/stop DB only: `make db` / `make db-down`.
+- Start/stop Phoenix only: `make phoenix` / `make phoenix-down`.
 - Frontend lint/format: `cd web && pnpm lint` / `pnpm format`.
 
 ### Conventions & Constraints
