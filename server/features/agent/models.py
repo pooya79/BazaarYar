@@ -6,6 +6,7 @@ from typing import Any, Callable
 from langchain_openai import ChatOpenAI
 
 from server.core.config import get_settings
+from server.features.settings.types import ModelSettingsResolved
 
 
 @dataclass(frozen=True)
@@ -142,24 +143,37 @@ class CompatibleChatOpenAI(ChatOpenAI):
         return payload
 
 
-def openailike_model_spec() -> ModelSpec:
+def _default_runtime_settings() -> ModelSettingsResolved:
     settings = get_settings()
+    return ModelSettingsResolved(
+        model_name=settings.openailike_model,
+        api_key=settings.openailike_api_key,
+        base_url=settings.openailike_base_url,
+        temperature=settings.openailike_temperature,
+        reasoning_effort=settings.openailike_reasoning_effort,
+        reasoning_enabled=settings.openailike_reasoning_enabled,
+        source="environment_defaults",
+    )
+
+
+def openailike_model_spec(runtime_settings: ModelSettingsResolved | None = None) -> ModelSpec:
+    resolved = runtime_settings or _default_runtime_settings()
 
     def _build_model() -> CompatibleChatOpenAI:
         model_kwargs: dict[str, Any] = {
-            "model": settings.openailike_model,
-            "api_key": settings.openailike_api_key,
-            "temperature": 1.0,
+            "model": resolved.model_name,
+            "api_key": resolved.api_key,
+            "temperature": resolved.temperature,
             "reasoning": {
-                "effort": "medium",
+                "effort": resolved.reasoning_effort,
                 "exclude": False,
-                "enables": True,
+                "enables": resolved.reasoning_enabled,
             },
         }
-        if settings.openailike_base_url:
+        if resolved.base_url:
             # OpenAI-compatible providers often need a custom base URL.
-            model_kwargs["base_url"] = settings.openailike_base_url
+            model_kwargs["base_url"] = resolved.base_url
 
         return CompatibleChatOpenAI(**model_kwargs)
 
-    return ModelSpec(name=settings.openailike_model, build_model=_build_model)
+    return ModelSpec(name=resolved.model_name, build_model=_build_model)

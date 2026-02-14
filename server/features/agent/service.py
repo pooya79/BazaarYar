@@ -10,28 +10,17 @@ from server.features.agent.runtime import (
     extract_trace as extract_trace_base,
     split_openai_like_content,
 )
-
-_MODEL_SPEC = openailike_model_spec()
-MODEL_NAME = _MODEL_SPEC.name
+from server.features.settings.types import ModelSettingsResolved
 
 
-def build_agent():
-    return build_agent_runtime(_MODEL_SPEC.build_model())
-
-
-_agent_instance = None
-
-
-def get_agent():
-    global _agent_instance
-    if _agent_instance is None:
-        _agent_instance = build_agent()
-    return _agent_instance
+def build_agent(model_settings: ModelSettingsResolved) -> Any:
+    model_spec = openailike_model_spec(model_settings)
+    return build_agent_runtime(model_spec.build_model())
 
 
 def split_ai_content(message: AIMessage) -> tuple[list[str], list[str]]:
     return split_openai_like_content(message)
 
 
-def extract_trace(messages: Iterable[BaseMessage]) -> dict[str, Any]:
-    return extract_trace_base(messages, model_name=MODEL_NAME, split_fn=split_ai_content)
+def extract_trace(messages: Iterable[BaseMessage], *, model_name: str) -> dict[str, Any]:
+    return extract_trace_base(messages, model_name=model_name, split_fn=split_ai_content)

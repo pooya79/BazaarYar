@@ -20,7 +20,7 @@ The agent platform is designed to support:
 - Frontend: Next.js app in `web/` (React + Tailwind CSS + Radix UI).
   Frontend is organized as feature-first modules in `web/src/features/*` with shared primitives/services in `web/src/shared/*`.
 - Backend API: FastAPI app in `server/`, served via Uvicorn.
-  Backend business logic is feature-sliced under `server/features/*`, with API composition in `server/api/router.py`.
+  Backend business logic is feature-sliced under `server/features/*`, with API composition in `server/api/router.py` (including `/api/agent/*`, `/api/settings/*`, `/api/tables/*`, and chat/attachment routes).
 - Services: PostgreSQL (and pgAdmin) via Docker Compose in `infra/`.
 
 ### Key Directories
@@ -29,16 +29,16 @@ The agent platform is designed to support:
 - `scripts/`: Project utility scripts for local automation and developer workflows.
 - `server/`: FastAPI backend application source and Python project config.
 - `server/api/`: Backend API composition root.
-- `server/features/`: Canonical backend feature slices (`agent`, `attachments`, `chat`, `tables`, `shared`).
-- `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters, python sandbox tool).
+- `server/features/`: Canonical backend feature slices (`agent`, `settings`, `attachments`, `chat`, `tables`, `shared`).
+- `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters, tools, model integration, python sandbox tool).
+- `server/features/settings/`: Global app settings feature modules (model settings repo/service/API under `/api/settings`).
 - `server/features/attachments/`: Attachment feature modules (storage, metadata, upload/download API).
 - `server/features/chat/`: Conversation/chat feature modules (context windowing, persistence orchestration, API).
 - `server/features/tables/`: Reference table feature modules (schema/query/import/service/API).
 - `server/features/shared/`: Shared backend helpers (for example UUID parsing utilities).
-- `server/agents/`: Agent runtime, model integration, and tool infrastructure.
 - `server/core/`: Core backend settings and environment-driven configuration.
 - `server/db/`: SQLAlchemy models, DB session utilities, and Alembic integration.
-- `server/db/models/`: SQLAlchemy model modules split by domain (`chat.py`, `attachments.py`, `tables.py`) with stable exports in `__init__.py`.
+- `server/db/models/`: SQLAlchemy model modules split by domain (`agent.py`, `chat.py`, `attachments.py`, `tables.py`) with stable exports in `__init__.py`.
 - `server/db/alembic/`: Migration environment and migration version files.
 - `server/tests/`: Backend test suite (API and service-level behavior checks).
 - `server/tests/architecture/`: Import-boundary guardrail tests for backend layering and coupling constraints.
@@ -84,3 +84,5 @@ The agent platform is designed to support:
 - Import backend functionality from canonical modules under `server/features/*` and `server/db/models/*`.
 - To load env variables in server you should define them in `server/core/config.py`.
 - Use async routes for server
+- Agent model settings precedence: use DB global settings from `server/features/settings` when present, otherwise fallback to env defaults from `server/core/config.py`.
+- Never commit real API keys to repo files. Settings read APIs should return masked key previews only (no full secret echo).

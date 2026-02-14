@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import quote_plus
 
 from pydantic import Field, PostgresDsn, computed_field
@@ -71,6 +72,18 @@ class Settings(BaseSettings):
     openailike_base_url: str = Field(
         default="",
         validation_alias="OPENAILIKE_BASE_URL",
+    )
+    openailike_temperature: float = Field(
+        default=1.0,
+        validation_alias="OPENAILIKE_TEMPERATURE",
+    )
+    openailike_reasoning_effort: Literal["low", "medium", "high"] = Field(
+        default="medium",
+        validation_alias="OPENAILIKE_REASONING_EFFORT",
+    )
+    openailike_reasoning_enabled: bool = Field(
+        default=True,
+        validation_alias="OPENAILIKE_REASONING_ENABLED",
     )
 
     upload_storage_dir: str = Field(

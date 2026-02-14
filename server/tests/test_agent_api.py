@@ -15,6 +15,7 @@ agents_api = importlib.import_module("server.features.agent.api.streaming")
 agent_router_api = importlib.import_module("server.features.agent.api.router")
 conversations_api = importlib.import_module("server.features.chat.api")
 from server.features.chat import ConversationListEntry, ConversationNotFoundError
+from server.features.settings.types import ModelSettingsResolved
 from server.main import app
 
 
@@ -390,13 +391,27 @@ def _patch_memory_store(monkeypatch):
     async def _override_db():
         yield _DummySession(store)
 
+    async def _fake_model_settings(_session):
+        return ModelSettingsResolved(
+            model_name="gpt-4.1-mini",
+            api_key="test-key",
+            base_url="",
+            temperature=1.0,
+            reasoning_effort="medium",
+            reasoning_enabled=True,
+            source="environment_defaults",
+        )
+
+    monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+
     app.dependency_overrides[get_db_session] = _override_db
     return store
 
 
 def _patch_agent(monkeypatch):
     stub = _StubAgent()
-    monkeypatch.setattr(agents_api, "get_agent", lambda: stub)
+    monkeypatch.setattr(agents_api, "get_agent", lambda *_args, **_kwargs: stub)
     return stub
 
 
@@ -435,9 +450,35 @@ def test_agent_non_stream_response(monkeypatch):
     assert response.status_code == 200
     data = response.json()
     assert data["output_text"] == "It is 2026-02-03T00:00:00Z."
+    assert data["model"] == "gpt-4.1-mini"
     assert data["tool_calls"][0]["name"] == "utc_time"
     assert data["tool_results"][0]["content"] == "2026-02-03T00:00:00Z"
     assert data["reasoning"][0].startswith("Checking")
+
+
+def test_agent_non_stream_uses_overridden_model_settings(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+
+    async def _fake_model_settings(_session):
+        return ModelSettingsResolved(
+            model_name="openai/gpt-5-mini",
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0.7,
+            reasoning_effort="high",
+            reasoning_enabled=True,
+            source="database",
+        )
+
+    monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+
+    client = TestClient(app)
+    response = client.post("/api/agent", json={"message": "What time is it?"})
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "openai/gpt-5-mini"
 
 
 def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatch):
@@ -563,7 +604,7 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
                 yield ("updates", {"tools": {"messages": [tool_msg]}})
                 yield ("updates", {"model": {"messages": [final_msg]}})
 
-    monkeypatch.setattr(agents_api, "get_agent", lambda: _ArtifactStubAgent())
+    monkeypatch.setattr(agents_api, "get_agent", lambda *_args, **_kwargs: _ArtifactStubAgent())
     client = TestClient(app)
 
     tool_result_payload = None
@@ -758,7 +799,11 @@ def test_stream_persists_reasoning_kind_in_interleaved_order(monkeypatch):
                 yield ("updates", {"tools": {"messages": [tool_msg]}})
                 yield ("updates", {"model": {"messages": [final_msg]}})
 
-    monkeypatch.setattr(agents_api, "get_agent", lambda: _InterleavedReasoningStubAgent())
+    monkeypatch.setattr(
+        agents_api,
+        "get_agent",
+        lambda *_args, **_kwargs: _InterleavedReasoningStubAgent(),
+    )
     client = TestClient(app)
 
     final_payload = None
@@ -817,7 +862,7 @@ def test_stream_emits_sandbox_status_events(monkeypatch):
             if "updates" in stream_mode:
                 yield ("updates", {"model": {"messages": [final_msg]}})
 
-    monkeypatch.setattr(agents_api, "get_agent", lambda: _SandboxStatusStubAgent())
+    monkeypatch.setattr(agents_api, "get_agent", lambda *_args, **_kwargs: _SandboxStatusStubAgent())
     client = TestClient(app)
 
     events = []
