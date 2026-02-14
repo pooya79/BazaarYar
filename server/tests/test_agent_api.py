@@ -558,6 +558,9 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
 
     assert tool_result_payload is not None
     assert tool_result_payload["artifacts"][0]["id"] == artifact.id
+    assert tool_result_payload["payload"]["status"] == "succeeded"
+    assert tool_result_payload["payload"]["stdout_tail"] == "ok"
+    assert tool_result_payload["payload"]["stderr_tail"] == ""
     assert "artifact_attachments:" in tool_result_payload["content"]
     assert "sandbox_reused: true" in tool_result_payload["content"]
     assert "input_files:" in tool_result_payload["content"]

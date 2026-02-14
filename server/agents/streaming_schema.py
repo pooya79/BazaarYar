@@ -49,6 +49,8 @@ class ToolResultEvent(BaseModel):
     tool_call_id: str | None = None
     content: str
     artifacts: list[ToolResultArtifact] | None = None
+    payload: dict[str, Any] | None = None
+
 
 class SandboxStatusEvent(BaseModel):
     type: Literal["sandbox_status"] = "sandbox_status"

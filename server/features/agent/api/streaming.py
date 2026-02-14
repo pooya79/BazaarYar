@@ -331,6 +331,7 @@ async def stream_agent_response(
                                             tool_call_id=msg.tool_call_id,
                                             content=result_content,
                                             artifacts=artifacts or None,
+                                            payload=tool_payload,
                                         )
                                     )
                                     if artifact_ids:

@@ -20,6 +20,7 @@ export type ToolCallEntry = {
   streamedArgsText: string;
   finalArgs?: Record<string, unknown> | null;
   resultContent?: string | null;
+  resultPayload?: Record<string, unknown> | null;
   resultArtifacts?: MessageAttachment[];
   status: "streaming" | "called" | "completed";
 };

@@ -556,6 +556,7 @@ export function useChatStream({
                   ...current,
                   callId: current.callId ?? event.tool_call_id,
                   resultContent: event.content,
+                  resultPayload: event.payload ?? current.resultPayload,
                   resultArtifacts: attachments,
                   status: "completed",
                 };

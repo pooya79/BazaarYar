@@ -128,6 +128,7 @@ export const toolResultSchema = z.object({
     )
     .nullable()
     .optional(),
+  payload: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const sandboxStatusSchema = z.object({

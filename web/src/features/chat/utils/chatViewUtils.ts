@@ -172,6 +172,313 @@ function parsePersistedToolResult(content: string) {
   return { toolCallId: null, resultContent: content.trim() };
 }
 
+const TOOL_RESULT_SECTION_HEADERS = [
+  "input_files:",
+  "artifact_attachments:",
+  "stdout:",
+  "stderr:",
+] as const;
+
+type ParsedFormattedToolResult = {
+  toolCallId: string | null;
+  status: string | null;
+  summary: string | null;
+  sandboxSessionId: string | null;
+  sandboxReused: string | null;
+  requestSequence: string | null;
+  queueWaitMs: string | null;
+  inputFiles: string[];
+  artifactAttachments: string[];
+  stdout: string | null;
+  stderr: string | null;
+};
+
+export type PythonToolViewModel = {
+  code: string | null;
+  status: string | null;
+  summary: string | null;
+  sandboxSessionId: string | null;
+  sandboxReused: string | null;
+  requestSequence: string | null;
+  queueWaitMs: string | null;
+  stdout: string | null;
+  stderr: string | null;
+  inputFiles: string[];
+  artifactAttachments: string[];
+  rawResult: string;
+  rawArgs: string;
+  rawFinalArgs: string | null;
+};
+
+function readScalarValue(line: string, prefix: string) {
+  const value = line.slice(prefix.length).trim();
+  return value || null;
+}
+
+function safeStringify(value: unknown) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function parseJsonArgs(text: string) {
+  if (!text.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(text);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function payloadValueAsString(
+  payload: Record<string, unknown> | null | undefined,
+  key: string,
+) {
+  if (!payload) {
+    return null;
+  }
+  const value = payload[key];
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return safeStringify(value);
+}
+
+function payloadInputFileRows(
+  payload: Record<string, unknown> | null | undefined,
+) {
+  const input = payload?.input_files;
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const rows: string[] = [];
+  for (const item of input) {
+    if (!isRecord(item)) {
+      rows.push(safeStringify(item));
+      continue;
+    }
+    const attachmentId = String(item.attachment_id ?? "").trim() || "-";
+    const originalFilename = String(item.original_filename ?? "").trim() || "-";
+    const sandboxFilename =
+      String(item.sandbox_filename ?? "").trim() || "[unknown]";
+    const inputPath = String(item.input_path ?? "").trim() || "-";
+    rows.push(
+      `${sandboxFilename} (attachment_id=${attachmentId}, original=${originalFilename}, path=${inputPath})`,
+    );
+  }
+  return rows;
+}
+
+function payloadArtifactRows(
+  payload: Record<string, unknown> | null | undefined,
+) {
+  const artifacts = payload?.artifacts;
+  if (!Array.isArray(artifacts)) {
+    return [];
+  }
+
+  const rows: string[] = [];
+  for (const item of artifacts) {
+    if (!isRecord(item)) {
+      rows.push(safeStringify(item));
+      continue;
+    }
+    const id = String(item.id ?? "").trim() || "-";
+    const filename = String(item.filename ?? "").trim() || "[unnamed]";
+    const contentType = String(item.content_type ?? "").trim() || "-";
+    rows.push(`${filename} (id=${id}, content_type=${contentType})`);
+  }
+  return rows;
+}
+
+export function isPythonToolCall(tool: ToolCallEntry) {
+  if (tool.name === "run_python_code") {
+    return true;
+  }
+  return typeof tool.finalArgs?.code === "string";
+}
+
+export function extractPythonCode(tool: ToolCallEntry) {
+  const finalCode = tool.finalArgs?.code;
+  if (typeof finalCode === "string" && finalCode.trim()) {
+    return finalCode;
+  }
+
+  const parsedArgs = parseJsonArgs(tool.streamedArgsText);
+  const streamedCode = parsedArgs?.code;
+  if (typeof streamedCode === "string" && streamedCode.trim()) {
+    return streamedCode;
+  }
+
+  return null;
+}
+
+export function parseFormattedToolResult(
+  content: string,
+): ParsedFormattedToolResult {
+  const parsed: ParsedFormattedToolResult = {
+    toolCallId: null,
+    status: null,
+    summary: null,
+    sandboxSessionId: null,
+    sandboxReused: null,
+    requestSequence: null,
+    queueWaitMs: null,
+    inputFiles: [],
+    artifactAttachments: [],
+    stdout: null,
+    stderr: null,
+  };
+
+  if (!content.trim()) {
+    return parsed;
+  }
+
+  const lines = content.split(/\r?\n/);
+  const sectionHeaders = new Set<string>(TOOL_RESULT_SECTION_HEADERS);
+  const isSectionHeader = (line: string) => sectionHeaders.has(line.trim());
+
+  let index = 0;
+  while (index < lines.length) {
+    const rawLine = lines[index] ?? "";
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("tool_call_id:")) {
+      parsed.toolCallId = readScalarValue(trimmed, "tool_call_id:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("status:")) {
+      parsed.status = readScalarValue(trimmed, "status:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("summary:")) {
+      parsed.summary = readScalarValue(trimmed, "summary:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("sandbox_session_id:")) {
+      parsed.sandboxSessionId = readScalarValue(trimmed, "sandbox_session_id:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("sandbox_reused:")) {
+      parsed.sandboxReused = readScalarValue(trimmed, "sandbox_reused:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("request_sequence:")) {
+      parsed.requestSequence = readScalarValue(trimmed, "request_sequence:");
+      index += 1;
+      continue;
+    }
+    if (trimmed.startsWith("queue_wait_ms:")) {
+      parsed.queueWaitMs = readScalarValue(trimmed, "queue_wait_ms:");
+      index += 1;
+      continue;
+    }
+
+    if (
+      trimmed === "input_files:" ||
+      trimmed === "artifact_attachments:" ||
+      trimmed === "stdout:" ||
+      trimmed === "stderr:"
+    ) {
+      const section = trimmed.slice(0, -1);
+      index += 1;
+      const body: string[] = [];
+      while (index < lines.length) {
+        const candidate = lines[index] ?? "";
+        if (isSectionHeader(candidate)) {
+          break;
+        }
+        body.push(candidate);
+        index += 1;
+      }
+
+      if (section === "input_files") {
+        parsed.inputFiles = body
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => (line.startsWith("- ") ? line.slice(2) : line));
+      } else if (section === "artifact_attachments") {
+        parsed.artifactAttachments = body
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => (line.startsWith("- ") ? line.slice(2) : line));
+      } else if (section === "stdout") {
+        const text = body.join("\n").trim();
+        parsed.stdout = text || null;
+      } else if (section === "stderr") {
+        const text = body.join("\n").trim();
+        parsed.stderr = text || null;
+      }
+      continue;
+    }
+
+    index += 1;
+  }
+
+  return parsed;
+}
+
+export function buildPythonToolViewModel(
+  tool: ToolCallEntry,
+): PythonToolViewModel {
+  const fallback = parseFormattedToolResult(tool.resultContent ?? "");
+  const payload = isRecord(tool.resultPayload) ? tool.resultPayload : null;
+  const code = extractPythonCode(tool);
+  const inputFileRows = payloadInputFileRows(payload);
+  const artifactRows = payloadArtifactRows(payload);
+
+  const payloadStdout = payloadValueAsString(payload, "stdout_tail");
+  const payloadStderr = payloadValueAsString(payload, "stderr_tail");
+
+  return {
+    code,
+    status: payloadValueAsString(payload, "status") ?? fallback.status,
+    summary: payloadValueAsString(payload, "summary") ?? fallback.summary,
+    sandboxSessionId:
+      payloadValueAsString(payload, "sandbox_session_id") ??
+      fallback.sandboxSessionId,
+    sandboxReused:
+      payloadValueAsString(payload, "sandbox_reused") ?? fallback.sandboxReused,
+    requestSequence:
+      payloadValueAsString(payload, "request_sequence") ??
+      fallback.requestSequence,
+    queueWaitMs:
+      payloadValueAsString(payload, "queue_wait_ms") ?? fallback.queueWaitMs,
+    stdout: payloadStdout ?? fallback.stdout,
+    stderr: payloadStderr ?? fallback.stderr,
+    inputFiles: inputFileRows.length > 0 ? inputFileRows : fallback.inputFiles,
+    artifactAttachments:
+      artifactRows.length > 0 ? artifactRows : fallback.artifactAttachments,
+    rawResult: tool.resultContent ?? "",
+    rawArgs: tool.streamedArgsText,
+    rawFinalArgs: tool.finalArgs
+      ? JSON.stringify(tool.finalArgs, null, 2)
+      : null,
+  };
+}
+
 function createAssistantTurn(id: string, time: string): AssistantTurn {
   return {
     id,
