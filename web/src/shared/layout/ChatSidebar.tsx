@@ -32,6 +32,7 @@ type ChatSidebarProps = {
   library: NavItem[];
   activeTool: string;
   onToolSelect: (toolId: string) => void;
+  onOpenSettings: () => void;
 };
 
 export function ChatSidebar({
@@ -53,6 +54,7 @@ export function ChatSidebar({
   library,
   activeTool,
   onToolSelect,
+  onOpenSettings,
 }: ChatSidebarProps) {
   const chatPanelId = "chat-chats-panel";
   const chatsState = chatsOpen ? "open" : "closed";
@@ -223,6 +225,7 @@ export function ChatSidebar({
         type="button"
         variant="ghost"
         className="m-4 h-auto w-auto justify-start gap-3 rounded-md border border-transparent bg-marketing-sidebar-bg px-2.5 py-2 text-left text-marketing-text-primary hover:border-marketing-border hover:bg-marketing-accent-medium"
+        onClick={onOpenSettings}
       >
         <Avatar className="size-7">
           <AvatarFallback className="border border-marketing-border bg-marketing-surface text-xs font-semibold text-marketing-text-secondary">

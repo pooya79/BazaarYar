@@ -1,6 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -55,6 +59,7 @@ export function AppShell({ children }: AppShellProps) {
   );
 
   const isReferenceTablesRoute = pathname.startsWith("/reference-tables");
+  const isSettingsRoute = pathname.startsWith("/settings");
   const activeChatId = useMemo(() => {
     const match = pathname.match(/^\/c\/([^/]+)$/);
     return match ? match[1] : null;
@@ -65,6 +70,13 @@ export function AppShell({ children }: AppShellProps) {
     : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
+    if (isSettingsRoute) {
+      return {
+        pageTitle: "Model Settings",
+        pageIcon: SettingsIcon,
+      };
+    }
+
     const allItems = [...visibleTools, ...library];
     const match =
       allItems.find((item) => item.id === displayToolId) ?? visibleTools[0];
@@ -72,7 +84,7 @@ export function AppShell({ children }: AppShellProps) {
       pageTitle: match.label,
       pageIcon: match.icon,
     };
-  }, [displayToolId, visibleTools]);
+  }, [displayToolId, isSettingsRoute, visibleTools]);
 
   const mapChatItem = useCallback(
     (conversation: ConversationSummary): ChatItem => ({
@@ -227,9 +239,15 @@ export function AppShell({ children }: AppShellProps) {
     setChatMenuOpenId(null);
     if (toolId === "reference-tables") {
       router.push("/reference-tables");
-    } else if (isReferenceTablesRoute) {
+    } else if (isReferenceTablesRoute || isSettingsRoute) {
       router.push("/");
     }
+    closeSidebarOnMobile();
+  };
+
+  const handleOpenSettings = () => {
+    setChatMenuOpenId(null);
+    router.push("/settings/model");
     closeSidebarOnMobile();
   };
 
@@ -339,6 +357,7 @@ export function AppShell({ children }: AppShellProps) {
         library={library}
         activeTool={displayToolId}
         onToolSelect={handleToolClick}
+        onOpenSettings={handleOpenSettings}
       />
       <Button
         type="button"
