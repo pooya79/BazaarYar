@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   tools as allTools,
   type ChatAction,
@@ -12,6 +12,7 @@ import {
   summarizeConversationMeta,
 } from "@/features/chat";
 import {
+  type ConversationSummary,
   deleteAgentConversation,
   listAgentConversations,
   renameAgentConversation,
@@ -27,6 +28,8 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+const CONVERSATIONS_PAGE_SIZE = 30;
+
 export function AppShell({ children }: AppShellProps) {
   const sidebarId = "app-shell-sidebar";
   const router = useRouter();
@@ -34,8 +37,15 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [chatsOpen, setChatsOpen] = useState(false);
   const [chatItems, setChatItems] = useState<ChatItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
+  const [isLoadingInitialConversations, setIsLoadingInitialConversations] =
+    useState(false);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] =
+    useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState("assistant");
+  const conversationsEpochRef = useRef(0);
   const visibleTools = useMemo(
     () =>
       allTools.filter(
@@ -64,28 +74,96 @@ export function AppShell({ children }: AppShellProps) {
     };
   }, [displayToolId, visibleTools]);
 
-  const refreshConversations = useCallback(async (signal?: AbortSignal) => {
+  const mapChatItem = useCallback(
+    (conversation: ConversationSummary): ChatItem => ({
+      id: conversation.id,
+      title: conversation.title?.trim() || "Untitled conversation",
+      meta: summarizeConversationMeta(conversation),
+      status: "active",
+      starred: conversation.starred,
+    }),
+    [],
+  );
+
+  const refreshConversations = useCallback(
+    async (signal?: AbortSignal) => {
+      const epoch = conversationsEpochRef.current + 1;
+      conversationsEpochRef.current = epoch;
+      setIsLoadingInitialConversations(true);
+      setIsLoadingMoreConversations(false);
+      setHasMoreConversations(false);
+      setNextCursor(null);
+      try {
+        const page = await listAgentConversations({
+          limit: CONVERSATIONS_PAGE_SIZE,
+          signal,
+        });
+        if (conversationsEpochRef.current !== epoch) {
+          return;
+        }
+        setChatItems(page.items.map(mapChatItem));
+        setNextCursor(page.nextCursor ?? null);
+        setHasMoreConversations(page.hasMore);
+      } catch (error) {
+        if (
+          signal?.aborted ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
+        console.error("Failed to load conversations", error);
+      } finally {
+        if (conversationsEpochRef.current === epoch) {
+          setIsLoadingInitialConversations(false);
+        }
+      }
+    },
+    [mapChatItem],
+  );
+
+  const loadMoreConversations = useCallback(async () => {
+    if (
+      isLoadingInitialConversations ||
+      isLoadingMoreConversations ||
+      !hasMoreConversations ||
+      !nextCursor
+    ) {
+      return;
+    }
+
+    const epoch = conversationsEpochRef.current;
+    setIsLoadingMoreConversations(true);
     try {
-      const conversations = await listAgentConversations(signal);
-      setChatItems(
-        conversations.map((conversation) => ({
-          id: conversation.id,
-          title: conversation.title?.trim() || "Untitled conversation",
-          meta: summarizeConversationMeta(conversation),
-          status: "active",
-          starred: conversation.starred,
-        })),
-      );
-    } catch (error) {
-      if (
-        signal?.aborted ||
-        (error instanceof DOMException && error.name === "AbortError")
-      ) {
+      const page = await listAgentConversations({
+        limit: CONVERSATIONS_PAGE_SIZE,
+        cursor: nextCursor,
+      });
+      if (conversationsEpochRef.current !== epoch) {
         return;
       }
-      console.error("Failed to load conversations", error);
+      setChatItems((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        const incoming = page.items
+          .map(mapChatItem)
+          .filter((item) => !existingIds.has(item.id));
+        return [...current, ...incoming];
+      });
+      setNextCursor(page.nextCursor ?? null);
+      setHasMoreConversations(page.hasMore);
+    } catch (error) {
+      console.error("Failed to load more conversations", error);
+    } finally {
+      if (conversationsEpochRef.current === epoch) {
+        setIsLoadingMoreConversations(false);
+      }
     }
-  }, []);
+  }, [
+    hasMoreConversations,
+    isLoadingInitialConversations,
+    isLoadingMoreConversations,
+    mapChatItem,
+    nextCursor,
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -253,6 +331,10 @@ export function AppShell({ children }: AppShellProps) {
         onChatAction={handleChatAction}
         chatMenuOpenId={chatMenuOpenId}
         onChatMenuOpenChange={setChatMenuOpenId}
+        hasMoreConversations={hasMoreConversations}
+        isLoadingInitialConversations={isLoadingInitialConversations}
+        isLoadingMoreConversations={isLoadingMoreConversations}
+        onLoadMoreConversations={loadMoreConversations}
         tools={visibleTools}
         library={library}
         activeTool={displayToolId}

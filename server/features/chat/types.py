@@ -14,3 +14,12 @@ class ConversationListEntry:
     updated_at: datetime
     message_count: int
     last_message_at: datetime | None
+    sort_at: datetime
+
+
+@dataclass(frozen=True)
+class ConversationListCursor:
+    starred: bool
+    sort_at: datetime
+    created_at: datetime
+    id: UUID

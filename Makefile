@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations
+.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations seed-conversations
 
 ARGS ?=
 
@@ -52,4 +52,22 @@ sandbox-image:
 	docker build -t bazaaryar-python-sandbox:latest infra/sandbox
 
 clear-dev-conversations:
+	# Deletes all conversation/message/attachment DB records and linked files.
+	# ARGS:
+	# --dry-run: preview counts only (no deletion)
+	# --yes: execute deletion
+	# --force: allow run outside dev-like DB targets
 	PYTHONPATH=. uv run --project server python scripts/clear_dev_conversations.py $(ARGS)
+
+seed-conversations:
+	# Seeds synthetic conversations/messages for sidebar pagination/load testing.
+	# ARGS:
+	# --count <int> (required): number of conversations to create
+	# --messages-per-conversation <int> (default: 4)
+	# --title-prefix <string> (default: "Seed Conversation")
+	# --minutes-between-conversations <int> (default: 15)
+	# --batch-size <int> (default: 100)
+	# --dry-run: preview seeding plan only
+	# --yes: execute seeding
+	# --force: allow run outside dev-like DB targets
+	PYTHONPATH=. uv run --project server python scripts/seed_conversations.py $(ARGS)

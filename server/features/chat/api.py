@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+import base64
+import binascii
+import json
+from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +16,7 @@ from server.core.config import get_settings
 from server.db.models import Conversation, Message
 from server.db.session import get_db_session
 from server.features.chat import (
+    ConversationListCursor,
     ConversationListEntry,
     ConversationNotFoundError,
     build_context_window_for_model,
@@ -34,6 +39,12 @@ class ConversationSummaryResponse(BaseModel):
     updated_at: datetime
     message_count: int
     last_message_at: datetime | None
+
+
+class ConversationListPageResponse(BaseModel):
+    items: list[ConversationSummaryResponse]
+    next_cursor: str | None
+    has_more: bool
 
 
 class ConversationAttachmentResponse(BaseModel):
@@ -144,12 +155,78 @@ def _to_summary_response(item: ConversationListEntry) -> ConversationSummaryResp
     )
 
 
-@router.get("", response_model=list[ConversationSummaryResponse])
+def _encode_cursor(cursor: ConversationListCursor) -> str:
+    payload = {
+        "starred": cursor.starred,
+        "sort_at": cursor.sort_at.astimezone(timezone.utc).isoformat(),
+        "created_at": cursor.created_at.astimezone(timezone.utc).isoformat(),
+        "id": str(cursor.id),
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    return encoded.decode("ascii").rstrip("=")
+
+
+def _decode_cursor(raw_cursor: str) -> ConversationListCursor:
+    padded = raw_cursor + "=" * (-len(raw_cursor) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+        payload = json.loads(decoded.decode("utf-8"))
+        starred = payload["starred"]
+        sort_at = datetime.fromisoformat(payload["sort_at"])
+        created_at = datetime.fromisoformat(payload["created_at"])
+        item_id = UUID(payload["id"])
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, binascii.Error) as exc:
+        raise ValueError("Invalid pagination cursor.") from exc
+
+    if not isinstance(starred, bool):
+        raise ValueError("Invalid pagination cursor.")
+    if sort_at.tzinfo is None or created_at.tzinfo is None:
+        raise ValueError("Invalid pagination cursor.")
+
+    return ConversationListCursor(
+        starred=starred,
+        sort_at=sort_at,
+        created_at=created_at,
+        id=item_id,
+    )
+
+
+@router.get("", response_model=ConversationListPageResponse)
 async def get_conversations(
+    limit: int = Query(default=30, ge=1, le=100),
+    cursor: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db_session),
-) -> list[ConversationSummaryResponse]:
-    rows = await list_conversations(session)
-    return [_to_summary_response(item) for item in rows]
+) -> ConversationListPageResponse:
+    decoded_cursor: ConversationListCursor | None = None
+    if cursor:
+        try:
+            decoded_cursor = _decode_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    rows = await list_conversations(
+        session,
+        limit=limit,
+        cursor=decoded_cursor,
+    )
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    next_cursor = None
+    if has_more and page_rows:
+        last_item = page_rows[-1]
+        next_cursor = _encode_cursor(
+            ConversationListCursor(
+                starred=last_item.starred,
+                sort_at=last_item.sort_at,
+                created_at=last_item.created_at,
+                id=last_item.id,
+            )
+        )
+    return ConversationListPageResponse(
+        items=[_to_summary_response(item) for item in page_rows],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)

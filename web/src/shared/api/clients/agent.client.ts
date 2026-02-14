@@ -2,6 +2,7 @@ import { buildUrl, normalizeError } from "../http";
 import {
   contextWindowSchema,
   conversationDetailSchema,
+  conversationListPageSchema,
   conversationSummarySchema,
   streamEventSchema,
   uploadAttachmentsResponseSchema,
@@ -67,6 +68,12 @@ export type ConversationDetail = {
   messages: PersistedMessage[];
 };
 
+export type ConversationSummaryPage = {
+  items: ConversationSummary[];
+  nextCursor?: string | null;
+  hasMore: boolean;
+};
+
 export type ContextWindow = {
   conversationId: string;
   maxTokens: number;
@@ -83,6 +90,12 @@ export type StreamAgentOptions = {
   attachmentIds?: string[];
   signal?: AbortSignal;
   onEvent: (event: StreamEvent) => void;
+};
+
+export type ListAgentConversationsOptions = {
+  cursor?: string | null;
+  limit?: number;
+  signal?: AbortSignal;
 };
 
 const parseSseBlock = (block: string) => {
@@ -181,11 +194,23 @@ const mapPersistedMessage = (
 });
 
 export async function listAgentConversations(
-  signal?: AbortSignal,
-): Promise<ConversationSummary[]> {
-  const response = await fetch(buildUrl("/api/conversations"), {
+  options: ListAgentConversationsOptions = {},
+): Promise<ConversationSummaryPage> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options.cursor) {
+    params.set("cursor", options.cursor);
+  }
+  const query = params.toString();
+  const url = query
+    ? buildUrl(`/api/conversations?${query}`)
+    : buildUrl("/api/conversations");
+
+  const response = await fetch(url, {
     method: "GET",
-    signal,
+    signal: options.signal,
   });
 
   if (!response.ok) {
@@ -202,16 +227,20 @@ export async function listAgentConversations(
   }
 
   const payload = await response.json();
-  const parsed = conversationSummarySchema.array().parse(payload);
-  return parsed.map((item) => ({
-    id: item.id,
-    title: item.title,
-    starred: item.starred,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-    messageCount: item.message_count,
-    lastMessageAt: item.last_message_at,
-  }));
+  const parsed = conversationListPageSchema.parse(payload);
+  return {
+    items: parsed.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      starred: item.starred,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+      messageCount: item.message_count,
+      lastMessageAt: item.last_message_at,
+    })),
+    nextCursor: parsed.next_cursor,
+    hasMore: parsed.has_more,
+  };
 }
 
 export async function getAgentConversation(

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,7 +15,7 @@ from server.features.attachments.service import list_legacy_metadata_attachments
 from .constants import DEFAULT_TOKENIZER_NAME
 from .errors import AttachmentNotFoundError, ConversationNotFoundError
 from .tokens import estimate_tokens
-from .types import ConversationListEntry
+from .types import ConversationListCursor, ConversationListEntry
 
 
 def to_uuid(value: UUID | str) -> UUID:
@@ -311,6 +311,7 @@ async def list_conversations(
     session: AsyncSession,
     *,
     limit: int = 100,
+    cursor: ConversationListCursor | None = None,
 ) -> list[ConversationListEntry]:
     message_stats = (
         select(
@@ -321,12 +322,16 @@ async def list_conversations(
         .group_by(Message.conversation_id)
         .subquery()
     )
+    sort_at = func.coalesce(message_stats.c.last_message_at, Conversation.updated_at).label(
+        "sort_at"
+    )
 
     stmt = (
         select(
             Conversation,
             message_stats.c.message_count,
             message_stats.c.last_message_at,
+            sort_at,
         )
         .outerjoin(
             message_stats,
@@ -334,15 +339,40 @@ async def list_conversations(
         )
         .order_by(
             Conversation.starred.desc(),
-            func.coalesce(message_stats.c.last_message_at, Conversation.updated_at).desc(),
+            sort_at.desc(),
             Conversation.created_at.desc(),
+            Conversation.id.desc(),
         )
-        .limit(limit)
+        .limit(limit + 1)
     )
+    if cursor is not None:
+        starred_transition = (
+            Conversation.starred.is_(False) if cursor.starred else false()
+        )
+        stmt = stmt.where(
+            or_(
+                starred_transition,
+                and_(
+                    Conversation.starred.is_(cursor.starred),
+                    sort_at < cursor.sort_at,
+                ),
+                and_(
+                    Conversation.starred.is_(cursor.starred),
+                    sort_at == cursor.sort_at,
+                    Conversation.created_at < cursor.created_at,
+                ),
+                and_(
+                    Conversation.starred.is_(cursor.starred),
+                    sort_at == cursor.sort_at,
+                    Conversation.created_at == cursor.created_at,
+                    Conversation.id < cursor.id,
+                ),
+            )
+        )
     rows = (await session.execute(stmt)).all()
 
     output: list[ConversationListEntry] = []
-    for conversation, message_count, last_message_at in rows:
+    for conversation, message_count, last_message_at, sort_at_value in rows:
         output.append(
             ConversationListEntry(
                 id=conversation.id,
@@ -352,6 +382,7 @@ async def list_conversations(
                 updated_at=conversation.updated_at,
                 message_count=int(message_count or 0),
                 last_message_at=last_message_at,
+                sort_at=sort_at_value,
             )
         )
     return output
@@ -379,6 +410,7 @@ async def get_conversation_summary(
             Conversation,
             message_stats.c.message_count,
             message_stats.c.last_message_at,
+            func.coalesce(message_stats.c.last_message_at, Conversation.updated_at).label("sort_at"),
         )
         .outerjoin(
             message_stats,
@@ -390,7 +422,7 @@ async def get_conversation_summary(
     if row is None:
         raise ConversationNotFoundError(f"Conversation '{conversation_id}' was not found.")
 
-    conversation, message_count, last_message_at = row
+    conversation, message_count, last_message_at, sort_at = row
     return ConversationListEntry(
         id=conversation.id,
         title=conversation.title,
@@ -399,6 +431,7 @@ async def get_conversation_summary(
         updated_at=conversation.updated_at,
         message_count=int(message_count or 0),
         last_message_at=last_message_at,
+        sort_at=sort_at,
     )
 
 

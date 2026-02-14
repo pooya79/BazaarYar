@@ -234,16 +234,16 @@ class _MemoryStore:
             conversation.updated_at = now
         return message
 
-    async def list_conversations(self, _session, *, limit=100):
-        items = sorted(
-            self.conversations.values(),
-            key=lambda item: (item.starred, item.updated_at),
-            reverse=True,
-        )[:limit]
+    async def list_conversations(self, _session, *, limit=100, cursor=None):
         output = []
-        for conversation in items:
+        for conversation in self.conversations.values():
             conversation_key = str(conversation.id)
             conversation_messages = self.messages.get(conversation_key, [])
+            sort_at = (
+                conversation_messages[-1].created_at
+                if conversation_messages
+                else conversation.updated_at
+            )
             output.append(
                 ConversationListEntry(
                     id=conversation.id,
@@ -255,9 +255,35 @@ class _MemoryStore:
                     last_message_at=conversation_messages[-1].created_at
                     if conversation_messages
                     else None,
+                    sort_at=sort_at,
                 )
             )
-        return output
+        output.sort(
+            key=lambda item: (
+                item.starred,
+                item.sort_at,
+                item.created_at,
+                item.id,
+            ),
+            reverse=True,
+        )
+
+        if cursor is not None:
+            filtered: list[ConversationListEntry] = []
+            for item in output:
+                if item.starred != cursor.starred:
+                    should_include = not item.starred and cursor.starred
+                elif item.sort_at != cursor.sort_at:
+                    should_include = item.sort_at < cursor.sort_at
+                elif item.created_at != cursor.created_at:
+                    should_include = item.created_at < cursor.created_at
+                else:
+                    should_include = item.id.int < cursor.id.int
+                if should_include:
+                    filtered.append(item)
+            output = filtered
+
+        return output[: limit + 1]
 
     async def get_conversation_summary(self, _session, *, conversation_id):
         conversation = self.conversations.get(str(conversation_id))
@@ -272,6 +298,7 @@ class _MemoryStore:
             updated_at=conversation.updated_at,
             message_count=len(messages),
             last_message_at=messages[-1].created_at if messages else None,
+            sort_at=messages[-1].created_at if messages else conversation.updated_at,
         )
 
     async def rename_conversation(self, _session, *, conversation_id, title):
@@ -885,9 +912,11 @@ def test_list_conversations_endpoint(monkeypatch):
     response = client.get("/api/conversations")
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) >= 1
-    assert payload[0]["id"] in store.conversations
-    assert payload[0]["starred"] is False
+    assert len(payload["items"]) >= 1
+    assert payload["items"][0]["id"] in store.conversations
+    assert payload["items"][0]["starred"] is False
+    assert payload["has_more"] is False
+    assert payload["next_cursor"] is None
 
 
 def test_conversation_title_star_delete_endpoints(monkeypatch):
@@ -918,12 +947,58 @@ def test_conversation_title_star_delete_endpoints(monkeypatch):
 
     list_response = client.get("/api/conversations")
     assert list_response.status_code == 200
-    assert list_response.json()[0]["id"] == conversation_id
-    assert list_response.json()[0]["starred"] is True
+    assert list_response.json()["items"][0]["id"] == conversation_id
+    assert list_response.json()["items"][0]["starred"] is True
 
     delete_response = client.delete(f"/api/conversations/{conversation_id}")
     assert delete_response.status_code == 204
     assert conversation_id not in store.conversations
+
+
+def test_list_conversations_endpoint_supports_cursor_pagination(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+    client = TestClient(app)
+
+    for index in range(5):
+        stream_response = client.post(
+            "/api/agent/stream",
+            json={"message": f"Pagination seed {index}"},
+        )
+        assert stream_response.status_code == 200
+
+    first_page = client.get("/api/conversations", params={"limit": 2})
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    first_ids = [item["id"] for item in first_payload["items"]]
+    assert len(first_ids) == 2
+    assert first_payload["has_more"] is True
+    assert first_payload["next_cursor"]
+
+    second_page = client.get(
+        "/api/conversations",
+        params={"limit": 2, "cursor": first_payload["next_cursor"]},
+    )
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    second_ids = [item["id"] for item in second_payload["items"]]
+    assert len(second_ids) == 2
+    assert set(first_ids).isdisjoint(second_ids)
+
+    full_response = client.get("/api/conversations", params={"limit": 10})
+    assert full_response.status_code == 200
+    full_ids = [item["id"] for item in full_response.json()["items"]]
+    assert [*first_ids, *second_ids] == full_ids[:4]
+
+
+def test_list_conversations_endpoint_rejects_invalid_cursor(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+    client = TestClient(app)
+
+    response = client.get("/api/conversations", params={"cursor": "invalid-cursor", "limit": 2})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid pagination cursor."
 
 
 def teardown_function():

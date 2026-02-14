@@ -24,6 +24,10 @@ type ChatSidebarProps = {
   onChatAction: (action: ChatAction, chatId: string) => void;
   chatMenuOpenId: string | null;
   onChatMenuOpenChange: (chatId: string | null) => void;
+  hasMoreConversations: boolean;
+  isLoadingInitialConversations: boolean;
+  isLoadingMoreConversations: boolean;
+  onLoadMoreConversations: () => void;
   tools: NavItem[];
   library: NavItem[];
   activeTool: string;
@@ -41,6 +45,10 @@ export function ChatSidebar({
   onChatAction,
   chatMenuOpenId,
   onChatMenuOpenChange,
+  hasMoreConversations,
+  isLoadingInitialConversations,
+  isLoadingMoreConversations,
+  onLoadMoreConversations,
   tools,
   library,
   activeTool,
@@ -125,6 +133,10 @@ export function ChatSidebar({
                   onChatAction={onChatAction}
                   chatMenuOpenId={chatMenuOpenId}
                   onChatMenuOpenChange={onChatMenuOpenChange}
+                  hasMoreConversations={hasMoreConversations}
+                  isLoadingInitialConversations={isLoadingInitialConversations}
+                  isLoadingMoreConversations={isLoadingMoreConversations}
+                  onLoadMoreConversations={onLoadMoreConversations}
                 />
               </div>
             </div>

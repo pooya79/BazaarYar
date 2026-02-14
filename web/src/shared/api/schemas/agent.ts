@@ -28,6 +28,12 @@ export const conversationSummarySchema = z.object({
   last_message_at: z.string().nullable().optional(),
 });
 
+export const conversationListPageSchema = z.object({
+  items: z.array(conversationSummarySchema),
+  next_cursor: z.string().nullable().optional(),
+  has_more: z.boolean(),
+});
+
 export const conversationAttachmentSchema = z.object({
   id: z.string(),
   filename: z.string(),

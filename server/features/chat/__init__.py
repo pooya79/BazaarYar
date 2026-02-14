@@ -29,7 +29,7 @@ from .repo import (
 )
 from .selection import model_relevant_messages, pick_messages_for_budget
 from .tokens import estimate_tokens
-from .types import ConversationListEntry
+from .types import ConversationListCursor, ConversationListEntry
 
 
 async def build_context_window_for_model(
@@ -116,6 +116,7 @@ async def summarize_and_archive_old_messages(
 __all__ = [
     "AttachmentNotFoundError",
     "ConversationListEntry",
+    "ConversationListCursor",
     "ConversationNotFoundError",
     "DEFAULT_TOKENIZER_NAME",
     "MODEL_CONTEXT_MESSAGE_KINDS",
