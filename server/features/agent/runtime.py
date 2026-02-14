@@ -7,29 +7,30 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain.tools import tool
 
+from server.features.agent.prompts import (
+    ADD_NUMBERS_TOOL_DESCRIPTION,
+    AGENT_SYSTEM_PROMPT,
+    REVERSE_TEXT_TOOL_DESCRIPTION,
+    UTC_TIME_TOOL_DESCRIPTION,
+)
 from server.features.agent.sandbox import PYTHON_SANDBOX_TOOLS
 from server.features.agent.usage import extract_usage
 from server.core.config import get_settings
 
-SYSTEM_PROMPT = (
-    "You are BazaarYar, an assistant that is concise, practical, and transparent. "
-    "When helpful, call tools to retrieve facts or compute results. "
-    "Expose tool usage and provide a brief reasoning summary when the user requests it. "
-    "For run_python_code: pass attachment_ids as a list of selected user attachment IDs when choosing files. "
-)
+SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT
 
 
-@tool(description="Add two numbers and return the sum.")
+@tool(description=ADD_NUMBERS_TOOL_DESCRIPTION)
 def add_numbers(a: float, b: float) -> str:
     return str(a + b)
 
 
-@tool(description="Reverse the provided text.")
+@tool(description=REVERSE_TEXT_TOOL_DESCRIPTION)
 def reverse_text(text: str) -> str:
     return text[::-1]
 
 
-@tool(description="Get the current UTC time in ISO-8601 format.")
+@tool(description=UTC_TIME_TOOL_DESCRIPTION)
 def utc_time() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat() + "Z"
 

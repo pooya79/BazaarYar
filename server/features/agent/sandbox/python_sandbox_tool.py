@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from langchain.tools import tool
 
+from server.features.agent.prompts import RUN_PYTHON_CODE_TOOL_DESCRIPTION
 from server.features.attachments import (
     load_attachments_for_ids,
     store_generated_artifact,
@@ -36,16 +37,7 @@ def _normalize_attachment_ids(raw: list[str] | None) -> list[str]:
 
 @tool(
     "run_python_code",
-    description=(
-        "Run Python code in an isolated sandbox for data analysis and plotting. "
-        "Sandbox globals: INPUT_DIR=/workspace/input, OUTPUT_DIR=/workspace/output, ATTACHMENTS, AVAILABLE_FILES, load_dataframe(). "
-        "The sandbox process writes artifacts from /workspace/output (its working directory). "
-        "Pass attachment_ids as a list of user attachment IDs when selecting specific files. "
-        "Use ATTACHMENTS entries (attachment_id/original_filename/sandbox_filename/input_path) to map IDs to files. "
-        "For plots, call plt.savefig('plot.png') or save files under OUTPUT_DIR so artifacts are returned. "
-        "Available libraries include pandas, matplotlib, seaborn, numpy and openpyxl. "
-        "Args: code, attachment_ids (optional list of attachment IDs), description (optional)."
-    )
+    description=RUN_PYTHON_CODE_TOOL_DESCRIPTION
 )
 async def run_python_code(
     code: str,

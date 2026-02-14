@@ -5,6 +5,12 @@ from typing import Any
 
 from langchain.tools import tool
 
+from server.features.agent.prompts import (
+    DESCRIBE_TABLE_TOOL_DESCRIPTION,
+    LIST_TABLES_TOOL_DESCRIPTION,
+    MUTATE_TABLE_TOOL_DESCRIPTION,
+    QUERY_TABLE_TOOL_DESCRIPTION,
+)
 from server.core.config import get_settings
 from server.db.session import AsyncSessionLocal
 from server.features.tables import (
@@ -21,7 +27,7 @@ def _dump(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=True)
 
 
-@tool(description="List available reference tables and core metadata.")
+@tool(description=LIST_TABLES_TOOL_DESCRIPTION)
 async def list_tables_tool(limit: int = 20) -> str:
     safe_limit = max(1, min(limit, 100))
     try:
@@ -37,7 +43,7 @@ async def list_tables_tool(limit: int = 20) -> str:
         return _dump({"error": str(exc), "provenance": {"tool": "list_tables"}})
 
 
-@tool(description="Describe a reference table including schema and metadata.")
+@tool(description=DESCRIBE_TABLE_TOOL_DESCRIPTION)
 async def describe_table(table_id: str) -> str:
     try:
         async with AsyncSessionLocal() as session:
@@ -54,12 +60,7 @@ async def describe_table(table_id: str) -> str:
         )
 
 
-@tool(
-    description=(
-        "Run a safe query against a reference table. Provide query_json with keys: "
-        "filters, sorts, page, page_size, group_by, aggregates."
-    )
-)
+@tool(description=QUERY_TABLE_TOOL_DESCRIPTION)
 async def query_table(table_id: str, query_json: str = "{}") -> str:
     try:
         query_payload = RowsQueryInput.model_validate(json.loads(query_json))
@@ -85,12 +86,7 @@ async def query_table(table_id: str, query_json: str = "{}") -> str:
         return _dump({"error": str(exc), "provenance": {"tool": "query_table", "table_id": table_id}})
 
 
-@tool(
-    description=(
-        "Mutate table rows with upserts/deletes. Provide batch_json with keys upserts/delete_row_ids. "
-        "Writes are allowed only when TABLES_AGENT_WRITE_ENABLED is true."
-    )
-)
+@tool(description=MUTATE_TABLE_TOOL_DESCRIPTION)
 async def mutate_table(table_id: str, batch_json: str) -> str:
     try:
         settings = get_settings()
