@@ -1,4 +1,4 @@
-import { Mic, Paperclip, SendHorizontal } from "lucide-react";
+import { Mic, Paperclip, SendHorizontal, Square } from "lucide-react";
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { useRef } from "react";
 import { cn } from "@/shared/lib/utils";
@@ -21,6 +21,8 @@ type ChatInputProps = {
   onChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
+  isStreaming: boolean;
+  onStop: () => void;
   canSend: boolean;
   attachments: PendingAttachment[];
   onPickFiles: (files: FileList) => void;
@@ -41,6 +43,8 @@ export function ChatInput({
   onChange,
   onKeyDown,
   onSend,
+  isStreaming,
+  onStop,
   canSend,
   attachments,
   onPickFiles,
@@ -144,19 +148,32 @@ export function ChatInput({
             >
               <Mic className={iconClass} aria-hidden="true" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "ml-1 h-8 w-8 rounded-md bg-marketing-primary text-marketing-on-primary shadow-marketing-soft transition-colors duration-150 hover:bg-marketing-secondary hover:text-marketing-on-primary",
-                "disabled:pointer-events-none disabled:bg-marketing-border disabled:text-marketing-text-muted",
-              )}
-              type="button"
-              onClick={onSend}
-              disabled={!canSend}
-            >
-              <SendHorizontal className={iconClass} aria-hidden="true" />
-            </Button>
+            {isStreaming ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-1 h-8 w-8 rounded-md bg-marketing-secondary text-marketing-on-primary shadow-marketing-soft transition-colors duration-150 hover:bg-marketing-primary hover:text-marketing-on-primary"
+                type="button"
+                onClick={onStop}
+                title="Stop generating"
+              >
+                <Square className={iconClass} aria-hidden="true" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "ml-1 h-8 w-8 rounded-md bg-marketing-primary text-marketing-on-primary shadow-marketing-soft transition-colors duration-150 hover:bg-marketing-secondary hover:text-marketing-on-primary",
+                  "disabled:pointer-events-none disabled:bg-marketing-border disabled:text-marketing-text-muted",
+                )}
+                type="button"
+                onClick={onSend}
+                disabled={!canSend}
+              >
+                <SendHorizontal className={iconClass} aria-hidden="true" />
+              </Button>
+            )}
           </div>
         </div>
         <div className="mt-3 flex flex-col items-start gap-2 px-1 text-[0.7rem] text-marketing-text-muted md:flex-row md:items-center md:justify-between">

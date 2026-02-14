@@ -356,6 +356,14 @@ class _DummySession:
             return self.store.conversations.get(str(key))
         if model is agents_api.Attachment:
             return self.store.attachments.get(str(key))
+        if model is agents_api.Message:
+            for items in self.store.messages.values():
+                for message in items:
+                    if str(message.id) == str(key):
+                        return message
+        return None
+
+    async def commit(self):
         return None
 
 
@@ -500,6 +508,7 @@ def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatc
     assert attachment_id in store.attachments
 
     events = []
+    first_event_type = None
     final_payload = None
     with client.stream(
         "POST",
@@ -511,10 +520,13 @@ def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatc
             if not line or not line.startswith("data: "):
                 continue
             payload = json.loads(line.removeprefix("data: "))
+            if first_event_type is None:
+                first_event_type = payload["type"]
             events.append(payload["type"])
             if payload["type"] == "final":
                 final_payload = payload
 
+    assert first_event_type == "conversation"
     assert "tool_call" in events
     assert "tool_result" in events
     assert "final" in events
@@ -527,9 +539,73 @@ def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatc
     messages = reload_response.json()["messages"]
     assert messages[0]["role"] == "user"
     assert messages[0]["attachments"][0]["id"] == attachment_id
-    assert messages[1]["message_kind"] == "tool_call"
-    assert messages[2]["message_kind"] == "tool_result"
-    assert messages[3]["message_kind"] == "normal"
+    message_kinds = [item["message_kind"] for item in messages]
+    assert "normal" in message_kinds
+    assert "tool_call" in message_kinds
+    assert "tool_result" in message_kinds
+
+
+def test_stream_abort_persists_partial_assistant_text(monkeypatch):
+    _patch_memory_store(monkeypatch)
+
+    class _AbortableStubAgent:
+        async def ainvoke(self, payload):
+            return {"messages": payload["messages"]}
+
+        async def astream(self, payload, stream_mode=("messages", "updates")):
+            from langchain_core.messages import AIMessageChunk
+            import asyncio
+
+            if "messages" in stream_mode:
+                yield (
+                    "messages",
+                    (
+                        AIMessageChunk(
+                            content=[{"type": "text", "text": "Partial answer"}]
+                        ),
+                        {"langgraph_node": "model"},
+                    ),
+                )
+                await asyncio.sleep(1.0)
+            if "updates" in stream_mode:
+                await asyncio.sleep(1.0)
+
+    monkeypatch.setattr(
+        agents_api,
+        "get_agent",
+        lambda *_args, **_kwargs: _AbortableStubAgent(),
+    )
+    client = TestClient(app)
+
+    conversation_id = None
+    with client.stream(
+        "POST",
+        "/api/agent/stream",
+        json={"message": "Stop this midway"},
+    ) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            if not line or not line.startswith("data: "):
+                continue
+            payload = json.loads(line.removeprefix("data: "))
+            if payload["type"] == "conversation":
+                conversation_id = payload["conversation_id"]
+            if payload["type"] == "text_delta":
+                break
+
+    assert conversation_id is not None
+
+    reload_response = client.get(f"/api/conversations/{conversation_id}")
+    assert reload_response.status_code == 200
+    messages = reload_response.json()["messages"]
+    assert messages[0]["role"] == "user"
+    assert messages[0]["message_kind"] == "normal"
+    assert any(
+        item["role"] == "assistant"
+        and item["message_kind"] == "normal"
+        and item["content"] == "Partial answer"
+        for item in messages
+    )
 
 
 def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):

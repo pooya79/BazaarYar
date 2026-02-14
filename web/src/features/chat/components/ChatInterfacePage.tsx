@@ -79,8 +79,10 @@ export function ChatInterfacePage() {
     });
 
   const {
-    isTyping,
+    isStreaming,
+    showTypingIndicator,
     abortStream,
+    stopStream,
     addAssistantNote,
     addUserMessage,
     startStream,
@@ -103,13 +105,17 @@ export function ChatInterfacePage() {
     if (!chatWrapperRef.current) {
       return;
     }
-    if (timeline.length === 0 && !isTyping) {
+    if (timeline.length === 0 && !showTypingIndicator) {
       return;
     }
     chatWrapperRef.current.scrollTop = chatWrapperRef.current.scrollHeight;
-  }, [timeline.length, isTyping]);
+  }, [timeline.length, showTypingIndicator]);
 
   const handleSend = async (overrideText?: string) => {
+    if (isStreaming) {
+      return;
+    }
+
     const baseText =
       typeof overrideText === "string" ? overrideText : messageInput;
     const text = baseText.trim();
@@ -164,6 +170,10 @@ export function ChatInterfacePage() {
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+      if (isStreaming) {
+        stopStream();
+        return;
+      }
       void handleSend();
     }
   };
@@ -181,7 +191,8 @@ export function ChatInterfacePage() {
   );
   const canSend =
     (messageInput.trim().length > 0 || hasReadyAttachment) &&
-    !hasUploadingAttachment;
+    !hasUploadingAttachment &&
+    !isStreaming;
 
   return (
     <>
@@ -197,7 +208,10 @@ export function ChatInterfacePage() {
             }}
           />
         ) : (
-          <ChatMessages timeline={timeline} isTyping={isTyping} />
+          <ChatMessages
+            timeline={timeline}
+            showTypingIndicator={showTypingIndicator}
+          />
         )}
       </div>
 
@@ -209,6 +223,8 @@ export function ChatInterfacePage() {
         onSend={() => {
           void handleSend();
         }}
+        isStreaming={isStreaming}
+        onStop={stopStream}
         canSend={canSend}
         attachments={pendingAttachments}
         onPickFiles={handlePickFiles}

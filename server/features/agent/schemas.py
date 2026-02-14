@@ -60,6 +60,11 @@ class SandboxStatusEvent(BaseModel):
     timestamp: datetime
 
 
+class ConversationEvent(BaseModel):
+    type: Literal["conversation"] = "conversation"
+    conversation_id: str
+
+
 class FinalEvent(BaseModel):
     type: Literal["final"] = "final"
     output_text: str
@@ -75,6 +80,7 @@ StreamEvent = Union[
     ToolCallEvent,
     ToolResultEvent,
     SandboxStatusEvent,
+    ConversationEvent,
     FinalEvent,
 ]
 

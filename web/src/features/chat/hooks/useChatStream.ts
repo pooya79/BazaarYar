@@ -81,22 +81,47 @@ export function useChatStream({
   createAssistantTurn,
   onConversationRedirect,
 }: UseChatStreamParams) {
-  const [isTyping, setIsTyping] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [isWaitingForFirstChunk, setIsWaitingForFirstChunk] = useState(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamStateRef = useRef<StreamState>(initialStreamState());
-  const hasStreamedRef = useRef(false);
+  const hasReceivedStreamPayloadRef = useRef(false);
+  const streamConversationIdRef = useRef<string | null>(null);
 
   const resetStreamState = useCallback(() => {
     streamStateRef.current = initialStreamState();
-    hasStreamedRef.current = false;
+    hasReceivedStreamPayloadRef.current = false;
+    setIsWaitingForFirstChunk(false);
   }, []);
+
+  const clearStreamTracking = useCallback(() => {
+    resetStreamState();
+    streamConversationIdRef.current = null;
+    setIsStreaming(false);
+  }, [resetStreamState]);
 
   const abortStream = useCallback(() => {
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
-    setIsTyping(false);
-    resetStreamState();
-  }, [resetStreamState]);
+    clearStreamTracking();
+  }, [clearStreamTracking]);
+
+  const stopStream = useCallback(() => {
+    const pendingConversationId = streamConversationIdRef.current;
+    const activeAbortController = streamAbortRef.current;
+    if (!activeAbortController && !pendingConversationId) {
+      return;
+    }
+
+    activeAbortController?.abort();
+    streamAbortRef.current = null;
+    clearStreamTracking();
+    window.dispatchEvent(new Event("agent-conversations:refresh"));
+
+    if (!activeChatId && pendingConversationId) {
+      onConversationRedirect(pendingConversationId);
+    }
+  }, [activeChatId, clearStreamTracking, onConversationRedirect]);
 
   useEffect(() => {
     return () => {
@@ -286,7 +311,8 @@ export function useChatStream({
 
       const abortController = new AbortController();
       streamAbortRef.current = abortController;
-      setIsTyping(true);
+      setIsStreaming(true);
+      setIsWaitingForFirstChunk(true);
 
       try {
         await streamAgent({
@@ -295,9 +321,14 @@ export function useChatStream({
           attachmentIds,
           signal: abortController.signal,
           onEvent: (event) => {
-            if (!hasStreamedRef.current) {
-              setIsTyping(false);
-              hasStreamedRef.current = true;
+            if (event.type === "conversation") {
+              streamConversationIdRef.current = event.conversation_id;
+              return;
+            }
+
+            if (!hasReceivedStreamPayloadRef.current) {
+              setIsWaitingForFirstChunk(false);
+              hasReceivedStreamPayloadRef.current = true;
             }
 
             if (event.type === "text_delta") {
@@ -679,16 +710,17 @@ export function useChatStream({
                 };
               });
 
+              const resolvedConversationId =
+                event.conversation_id || streamConversationIdRef.current;
               if (
-                event.conversation_id &&
-                event.conversation_id !== activeChatId
+                resolvedConversationId &&
+                resolvedConversationId !== activeChatId
               ) {
-                onConversationRedirect(event.conversation_id);
+                onConversationRedirect(resolvedConversationId);
               }
 
               window.dispatchEvent(new Event("agent-conversations:refresh"));
-              setIsTyping(false);
-              resetStreamState();
+              clearStreamTracking();
             }
           },
         });
@@ -697,7 +729,7 @@ export function useChatStream({
           return;
         }
 
-        setIsTyping(false);
+        clearStreamTracking();
         addAssistantNote(
           error instanceof Error
             ? `Something went wrong: ${error.message}`
@@ -718,14 +750,19 @@ export function useChatStream({
       ensureActiveAssistantTurn,
       ensureToolBlock,
       onConversationRedirect,
-      resetStreamState,
+      clearStreamTracking,
       updateAssistantTurn,
     ],
   );
 
+  const showTypingIndicator = isStreaming && isWaitingForFirstChunk;
+
   return {
-    isTyping,
+    isStreaming,
+    isWaitingForFirstChunk,
+    showTypingIndicator,
     abortStream,
+    stopStream,
     addAssistantNote,
     addUserMessage,
     startStream,

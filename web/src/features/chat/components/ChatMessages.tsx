@@ -22,7 +22,7 @@ const bubbleContentClass =
 
 type ChatMessagesProps = {
   timeline: ChatTimelineItem[];
-  isTyping: boolean;
+  showTypingIndicator: boolean;
 };
 
 type SelectedTool = {
@@ -42,7 +42,10 @@ function findAssistantTurn(
   return null;
 }
 
-export function ChatMessages({ timeline, isTyping }: ChatMessagesProps) {
+export function ChatMessages({
+  timeline,
+  showTypingIndicator,
+}: ChatMessagesProps) {
   const [selectedTool, setSelectedTool] = useState<SelectedTool | null>(null);
 
   const selectedTurn = useMemo(() => {
@@ -123,7 +126,7 @@ export function ChatMessages({ timeline, isTyping }: ChatMessagesProps) {
           </div>
         ))}
 
-        {isTyping ? (
+        {showTypingIndicator ? (
           <div className="flex gap-4">
             <div
               className={cn(

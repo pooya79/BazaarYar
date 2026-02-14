@@ -145,6 +145,11 @@ export const sandboxStatusSchema = z.object({
   timestamp: z.string(),
 });
 
+export const conversationSchema = z.object({
+  type: z.literal("conversation"),
+  conversation_id: z.string(),
+});
+
 export const finalSchema = z.object({
   type: z.literal("final"),
   output_text: z.string(),
@@ -160,5 +165,6 @@ export const streamEventSchema = z.discriminatedUnion("type", [
   toolCallSchema,
   toolResultSchema,
   sandboxStatusSchema,
+  conversationSchema,
   finalSchema,
 ]);

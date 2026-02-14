@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 from typing import Any
+from uuid import UUID
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,7 +18,7 @@ from server.features.agent.sandbox.event_bus import (
 )
 from server.features.agent.sandbox.session_executor import get_conversation_sandbox_status
 from server.features.agent.usage import extract_usage
-from server.db.models import Attachment, Conversation
+from server.db.models import Attachment, Conversation, Message
 from server.features.agent.api.formatters import (
     artifact_attachment_ids,
     format_meta_block,
@@ -28,6 +29,7 @@ from server.features.agent.api.formatters import (
 from server.features.agent.api.message_builders import to_langchain_message
 from server.features.agent.api.schemas import AgentRequest
 from server.features.agent.schemas import (
+    ConversationEvent,
     FinalEvent,
     ReasoningDeltaEvent,
     SandboxStatusEvent,
@@ -191,6 +193,8 @@ async def stream_agent_response(
         queue: asyncio.Queue[Any | None] = asyncio.Queue()
         producer_error: Exception | None = None
         active_reasoning_message_id: str | None = None
+        active_text_message_id: str | None = None
+        streamed_text_buffer = ""
 
         async def _push(event: Any) -> None:
             await queue.put(event)
@@ -221,6 +225,31 @@ async def stream_agent_response(
                 content_suffix=content,
             )
 
+        async def _persist_text_chunk(content: str) -> None:
+            nonlocal active_text_message_id, streamed_text_buffer
+            if not content:
+                return
+
+            _close_reasoning_phase()
+            if active_text_message_id is None:
+                message = await save_assistant_message(
+                    session,
+                    conversation_id=conversation.id,
+                    content=content,
+                    message_kind="normal",
+                )
+                active_text_message_id = str(message.id)
+                streamed_text_buffer = message.content
+            else:
+                await append_message_content(
+                    session,
+                    message_id=active_text_message_id,
+                    content_suffix=content,
+                )
+                streamed_text_buffer = f"{streamed_text_buffer}{content}"
+
+            await _push(TextDeltaEvent(content=content))
+
         async def _on_sandbox_status(payload: Any) -> None:
             _close_reasoning_phase()
             await _push(
@@ -233,7 +262,7 @@ async def stream_agent_response(
             )
 
         async def _producer() -> None:
-            nonlocal producer_error
+            nonlocal producer_error, streamed_text_buffer
             agent = get_agent(model_settings)
             final_ai: AIMessage | None = None
             request_context = AgentRequestContext(
@@ -243,6 +272,7 @@ async def stream_agent_response(
             )
 
             try:
+                await _push(ConversationEvent(conversation_id=str(conversation.id)))
                 with bind_event_sink(_on_sandbox_status), bind_request_context(request_context):
                     async for stream_mode, data in agent.astream(
                         {"messages": model_messages},
@@ -289,11 +319,9 @@ async def stream_agent_response(
                                         if block_type in {"text", "output_text"}:
                                             value = block.get("text") or block.get("output_text")
                                             if value:
-                                                _close_reasoning_phase()
-                                                await _push(TextDeltaEvent(content=str(value)))
+                                                await _persist_text_chunk(str(value))
                                 elif isinstance(content_blocks, str) and content_blocks:
-                                    _close_reasoning_phase()
-                                    await _push(TextDeltaEvent(content=content_blocks))
+                                    await _persist_text_chunk(content_blocks)
                         elif stream_mode == "updates":
                             for _, update in data.items():
                                 msg_list = update.get("messages", [])
@@ -373,14 +401,34 @@ async def stream_agent_response(
                     _, final_text_parts = split_ai_content(final_ai)
                     final_text = "".join(final_text_parts).strip()
 
-                    await save_assistant_message(
-                        session,
-                        conversation_id=conversation.id,
-                        content=final_text or "[empty assistant response]",
-                        token_estimate=estimate_tokens(final_text or ""),
-                        usage_json=usage if isinstance(usage, dict) else None,
-                        reasoning_tokens=reasoning_tokens,
-                    )
+                    if active_text_message_id is None:
+                        await save_assistant_message(
+                            session,
+                            conversation_id=conversation.id,
+                            content=final_text or "[empty assistant response]",
+                            token_estimate=estimate_tokens(final_text or ""),
+                            usage_json=usage if isinstance(usage, dict) else None,
+                            reasoning_tokens=reasoning_tokens,
+                        )
+                    elif final_text and final_text.startswith(streamed_text_buffer):
+                        suffix = final_text[len(streamed_text_buffer) :]
+                        if suffix:
+                            await append_message_content(
+                                session,
+                                message_id=active_text_message_id,
+                                content_suffix=suffix,
+                            )
+                            streamed_text_buffer = final_text
+
+                        text_message = await session.get(
+                            Message,
+                            UUID(active_text_message_id),
+                        )
+                        if text_message is not None:
+                            text_message.token_estimate = estimate_tokens(text_message.content)
+                            text_message.usage_json = usage if isinstance(usage, dict) else None
+                            text_message.reasoning_tokens = reasoning_tokens
+                            await session.commit()
 
                     usage_text = format_meta_block("usage", usage)
                     if usage_text:
