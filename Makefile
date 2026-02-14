@@ -53,6 +53,7 @@ sandbox-image:
 
 clear-dev-conversations:
 	# Deletes all conversation/message/attachment DB records and linked files.
+	# example: make clear-dev-conversations "ARGS=--dry-run"
 	# ARGS:
 	# --dry-run: preview counts only (no deletion)
 	# --yes: execute deletion
@@ -61,6 +62,7 @@ clear-dev-conversations:
 
 seed-conversations:
 	# Seeds synthetic conversations/messages for sidebar pagination/load testing.
+	# example: make seed-conversations "ARGS=--count 200 --dry-run"
 	# ARGS:
 	# --count <int> (required): number of conversations to create
 	# --messages-per-conversation <int> (default: 4)
