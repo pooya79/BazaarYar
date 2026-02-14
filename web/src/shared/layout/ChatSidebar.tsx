@@ -58,6 +58,7 @@ export function ChatSidebar({
 
   return (
     <aside
+      id="app-shell-sidebar"
       className={cn(
         "fixed left-0 top-0 z-[100] flex h-screen w-[280px] -translate-x-full flex-col border-r border-marketing-border bg-marketing-sidebar-bg shadow-marketing-drawer transition-[transform,width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:h-auto md:translate-x-0 md:shadow-none",
         isOpen && "translate-x-0",

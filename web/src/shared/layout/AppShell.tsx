@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -18,6 +19,7 @@ import {
 } from "@/shared/api/clients/agent.client";
 import { env } from "@/shared/api/schemas/env";
 import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
 import { ChatHeader } from "./ChatHeader";
 import { ChatSidebar } from "./ChatSidebar";
 
@@ -26,6 +28,7 @@ type AppShellProps = {
 };
 
 export function AppShell({ children }: AppShellProps) {
+  const sidebarId = "app-shell-sidebar";
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -255,14 +258,28 @@ export function AppShell({ children }: AppShellProps) {
         activeTool={displayToolId}
         onToolSelect={handleToolClick}
       />
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+        aria-expanded={sidebarOpen}
+        aria-controls={sidebarId}
+        className={cn(
+          "fixed top-1/2 z-[110] -translate-y-1/2 border-marketing-border bg-marketing-surface text-marketing-text-secondary shadow-marketing-soft transition-[left,transform,background-color,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
+          sidebarOpen ? "left-[280px] -translate-x-1/2" : "left-3",
+        )}
+        onClick={() => setSidebarOpen((prev) => !prev)}
+      >
+        {sidebarOpen ? (
+          <ChevronLeft className="size-4" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-4" aria-hidden="true" />
+        )}
+      </Button>
 
       <main className="relative z-[1] flex flex-1 flex-col overflow-hidden bg-marketing-bg">
-        <ChatHeader
-          pageTitle={pageTitle}
-          PageIcon={PageIcon}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-        />
+        <ChatHeader pageTitle={pageTitle} PageIcon={PageIcon} />
         {children}
       </main>
     </div>
