@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from server.agents.models import sanitize_responses_input
+from server.features.agent.models import sanitize_responses_input
 
 
 def test_sanitize_responses_input_normalizes_assistant_blocks_and_drops_null_id():

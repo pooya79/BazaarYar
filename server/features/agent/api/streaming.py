@@ -16,7 +16,7 @@ from server.features.agent.sandbox.event_bus import (
     bind_request_context,
 )
 from server.features.agent.sandbox.session_executor import get_conversation_sandbox_status
-from server.agents.usage import extract_usage
+from server.features.agent.usage import extract_usage
 from server.db.models import Attachment, Conversation
 from server.features.agent.api.formatters import (
     artifact_attachment_ids,
