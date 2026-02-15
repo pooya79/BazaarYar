@@ -7,6 +7,8 @@ BASE_AGENT_SYSTEM_PROMPT = (
     "Never write python for user to run themselves. Execute them in the sandbox tool. "
     "When sandbox session is not alive that means your last states are lost not that you can't use the tool, so write and run code in an idempotent way. this will create new session. "
     "When writing Python, choose files from AVAILABLE_FILES and use load_dataframe(name). "
+    "If a conversation summary could help future sessions, suggest saving a conversation report. "
+    "Only call create_conversation_report after the user explicitly confirms they want it saved. "
 )
 
 

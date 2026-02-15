@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, ToolMessage
 
 from server.db.session import get_db_session
+from server.features.agent import runtime as agent_runtime
 
 agents_api = importlib.import_module("server.features.agent.api.streaming")
 agent_router_api = importlib.import_module("server.features.agent.api.router")
@@ -456,6 +457,13 @@ def _payload_message_texts(messages):
         else:
             output.append(json.dumps(content, ensure_ascii=True))
     return output
+
+
+def test_runtime_tool_list_includes_conversation_report_tools():
+    tool_names = {tool.name for tool in agent_runtime.TOOLS}
+    assert "list_conversation_reports" in tool_names
+    assert "get_conversation_report" in tool_names
+    assert "create_conversation_report" in tool_names
 
 
 def test_agent_non_stream_response(monkeypatch):

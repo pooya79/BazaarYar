@@ -12,6 +12,7 @@ from server.features.agent.prompts import (
     REVERSE_TEXT_TOOL_DESCRIPTION,
     UTC_TIME_TOOL_DESCRIPTION,
 )
+from server.features.agent.report_tools import REPORT_TOOLS
 from server.features.agent.sandbox import PYTHON_SANDBOX_TOOLS
 from server.features.agent.usage import extract_usage
 from server.core.config import get_settings
@@ -36,7 +37,7 @@ _BASE_TOOLS = [add_numbers, reverse_text, utc_time]
 
 def _build_tools() -> list[Any]:
     settings = get_settings()
-    tools = list(_BASE_TOOLS)
+    tools = [*_BASE_TOOLS, *REPORT_TOOLS]
     if settings.sandbox_tool_enabled:
         tools.extend(PYTHON_SANDBOX_TOOLS)
     return tools

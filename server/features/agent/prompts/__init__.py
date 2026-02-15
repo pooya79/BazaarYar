@@ -3,6 +3,11 @@ from server.features.agent.prompts.runtime_tools import (
     REVERSE_TEXT_TOOL_DESCRIPTION,
     UTC_TIME_TOOL_DESCRIPTION,
 )
+from server.features.agent.prompts.report_tools import (
+    CREATE_CONVERSATION_REPORT_TOOL_DESCRIPTION,
+    GET_CONVERSATION_REPORT_TOOL_DESCRIPTION,
+    LIST_CONVERSATION_REPORTS_TOOL_DESCRIPTION,
+)
 from server.features.agent.prompts.sandbox_tools import RUN_PYTHON_CODE_TOOL_DESCRIPTION
 from server.features.agent.prompts.system_prompt import (
     BASE_AGENT_SYSTEM_PROMPT,
@@ -18,7 +23,10 @@ from server.features.agent.prompts.table_tools import (
 __all__ = [
     "ADD_NUMBERS_TOOL_DESCRIPTION",
     "BASE_AGENT_SYSTEM_PROMPT",
+    "CREATE_CONVERSATION_REPORT_TOOL_DESCRIPTION",
     "DESCRIBE_TABLE_TOOL_DESCRIPTION",
+    "GET_CONVERSATION_REPORT_TOOL_DESCRIPTION",
+    "LIST_CONVERSATION_REPORTS_TOOL_DESCRIPTION",
     "LIST_TABLES_TOOL_DESCRIPTION",
     "MUTATE_TABLE_TOOL_DESCRIPTION",
     "QUERY_TABLE_TOOL_DESCRIPTION",

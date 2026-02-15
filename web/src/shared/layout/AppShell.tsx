@@ -59,9 +59,14 @@ export function AppShell({ children }: AppShellProps) {
   );
 
   const isReferenceTablesRoute = pathname.startsWith("/reference-tables");
+  const isReportsRoute = pathname.startsWith("/reports");
   const isModelSettingsRoute = pathname.startsWith("/settings/model");
   const isCompanySettingsRoute = pathname.startsWith("/settings/company");
   const isSettingsRoute = pathname.startsWith("/settings");
+  const libraryItems = useMemo(
+    () => library.flatMap((section) => section.items),
+    [],
+  );
   const activeChatId = useMemo(() => {
     const match = pathname.match(/^\/c\/([^/]+)$/);
     return match ? match[1] : null;
@@ -71,7 +76,9 @@ export function AppShell({ children }: AppShellProps) {
     ? "reference-tables"
     : isCompanySettingsRoute
       ? "company-profile"
-      : activeTool;
+      : isReportsRoute
+        ? "conversation-reports"
+        : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
     if (isModelSettingsRoute) {
@@ -81,7 +88,7 @@ export function AppShell({ children }: AppShellProps) {
       };
     }
     if (isCompanySettingsRoute) {
-      const companyProfileItem = library.find(
+      const companyProfileItem = libraryItems.find(
         (item) => item.id === "company-profile",
       );
       return {
@@ -90,7 +97,7 @@ export function AppShell({ children }: AppShellProps) {
       };
     }
 
-    const allItems = [...visibleTools, ...library];
+    const allItems = [...visibleTools, ...libraryItems];
     const match =
       allItems.find((item) => item.id === displayToolId) ?? visibleTools[0];
     return {
@@ -101,6 +108,7 @@ export function AppShell({ children }: AppShellProps) {
     displayToolId,
     isCompanySettingsRoute,
     isModelSettingsRoute,
+    libraryItems,
     visibleTools,
   ]);
 
@@ -212,10 +220,16 @@ export function AppShell({ children }: AppShellProps) {
       setActiveTool("reference-tables");
       return;
     }
+    if (isReportsRoute) {
+      setActiveTool("conversation-reports");
+      return;
+    }
     setActiveTool((current) =>
-      current === "reference-tables" ? "assistant" : current,
+      current === "reference-tables" || current === "conversation-reports"
+        ? "assistant"
+        : current,
     );
-  }, [isReferenceTablesRoute]);
+  }, [isReferenceTablesRoute, isReportsRoute]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -257,9 +271,11 @@ export function AppShell({ children }: AppShellProps) {
     setChatMenuOpenId(null);
     if (toolId === "reference-tables") {
       router.push("/reference-tables");
+    } else if (toolId === "conversation-reports") {
+      router.push("/reports");
     } else if (toolId === "company-profile") {
       router.push("/settings/company");
-    } else if (isReferenceTablesRoute || isSettingsRoute) {
+    } else if (isReferenceTablesRoute || isReportsRoute || isSettingsRoute) {
       router.push("/");
     }
     closeSidebarOnMobile();
@@ -374,7 +390,7 @@ export function AppShell({ children }: AppShellProps) {
         isLoadingMoreConversations={isLoadingMoreConversations}
         onLoadMoreConversations={loadMoreConversations}
         tools={visibleTools}
-        library={library}
+        librarySections={library}
         activeTool={displayToolId}
         onToolSelect={handleToolClick}
         onOpenSettings={handleOpenSettings}

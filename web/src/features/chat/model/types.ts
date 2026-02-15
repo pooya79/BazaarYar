@@ -28,7 +28,17 @@ export type ToolCallEntry = {
 export type AssistantContentBlock =
   | {
       id: string;
-      type: "text" | "reasoning" | "note";
+      type: "text";
+      content: string;
+    }
+  | {
+      id: string;
+      type: "reasoning";
+      content: string;
+    }
+  | {
+      id: string;
+      type: "note";
       content: string;
     }
   | {
@@ -73,6 +83,12 @@ export type NavItem = {
   id: string;
   label: string;
   icon: LucideIcon;
+};
+
+export type LibrarySection = {
+  id: string;
+  label: string;
+  items: NavItem[];
 };
 
 export type QuickAction = {

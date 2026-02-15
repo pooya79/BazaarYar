@@ -2,6 +2,7 @@ import { ChevronDown, ExternalLink, Plus, Settings } from "lucide-react";
 import type {
   ChatAction,
   ChatItem,
+  LibrarySection,
   NavItem,
 } from "@/features/chat/model/types";
 import { cn } from "@/shared/lib/utils";
@@ -29,7 +30,7 @@ type ChatSidebarProps = {
   isLoadingMoreConversations: boolean;
   onLoadMoreConversations: () => void;
   tools: NavItem[];
-  library: NavItem[];
+  librarySections: LibrarySection[];
   activeTool: string;
   onToolSelect: (toolId: string) => void;
   onOpenSettings: () => void;
@@ -51,7 +52,7 @@ export function ChatSidebar({
   isLoadingMoreConversations,
   onLoadMoreConversations,
   tools,
-  library,
+  librarySections,
   activeTool,
   onToolSelect,
   onOpenSettings,
@@ -189,33 +190,44 @@ export function ChatSidebar({
             <div className="mb-2 pl-2 text-[0.7rem] font-bold uppercase tracking-[0.08em] text-marketing-text-muted">
               Library
             </div>
-            <ul className="space-y-1">
-              {library.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTool === item.id;
-                return (
-                  <li key={item.id}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className={cn(
-                        "h-auto w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[0.875rem] font-medium text-marketing-text-secondary",
-                        !isActive &&
-                          "hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
-                        isActive &&
-                          "bg-marketing-accent-soft font-semibold text-marketing-primary",
-                      )}
-                      onClick={() => onToolSelect(item.id)}
-                    >
-                      <span className="flex w-6 justify-center">
-                        <Icon className={iconClass} aria-hidden="true" />
-                      </span>
-                      <span>{item.label}</span>
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-3">
+              {librarySections.map((section) => (
+                <div key={section.id}>
+                  {section.label.trim() ? (
+                    <div className="px-2 pb-1 text-[0.67rem] font-semibold uppercase tracking-[0.07em] text-marketing-text-muted">
+                      {section.label}
+                    </div>
+                  ) : null}
+                  <ul className="space-y-1">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTool === item.id;
+                      return (
+                        <li key={item.id}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className={cn(
+                              "h-auto w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[0.875rem] font-medium text-marketing-text-secondary",
+                              !isActive &&
+                                "hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
+                              isActive &&
+                                "bg-marketing-accent-soft font-semibold text-marketing-primary",
+                            )}
+                            onClick={() => onToolSelect(item.id)}
+                          >
+                            <span className="flex w-6 justify-center">
+                              <Icon className={iconClass} aria-hidden="true" />
+                            </span>
+                            <span>{item.label}</span>
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </ScrollArea>

@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  AssistantContentBlock,
   AssistantTurn,
   ChatTimelineItem,
   MessageAttachment,
@@ -278,7 +279,7 @@ export function useChatStream({
   );
 
   const ensureToolBlock = useCallback(
-    (turn: AssistantTurn, toolKey: string) => {
+    (turn: AssistantTurn, toolKey: string): AssistantTurn => {
       if (
         turn.blocks.some(
           (block) => block.type === "tool_call" && block.toolKey === toolKey,
@@ -286,16 +287,14 @@ export function useChatStream({
       ) {
         return turn;
       }
+      const toolBlock: AssistantContentBlock = {
+        id: blockId(turn.id, "tool", streamStateRef.current.nextBlockSeq++),
+        type: "tool_call",
+        toolKey,
+      };
       return {
         ...turn,
-        blocks: [
-          ...turn.blocks,
-          {
-            id: blockId(turn.id, "tool", streamStateRef.current.nextBlockSeq++),
-            type: "tool_call",
-            toolKey,
-          },
-        ],
+        blocks: [...turn.blocks, toolBlock],
       };
     },
     [],

@@ -2,6 +2,7 @@ import {
   Activity,
   Building2,
   Calendar,
+  FileText,
   Globe,
   Mail,
   MessageSquare,
@@ -9,16 +10,27 @@ import {
   Target,
 } from "lucide-react";
 
-import type { ChatItem, NavItem, QuickAction } from "./types";
+import type { ChatItem, LibrarySection, NavItem, QuickAction } from "./types";
 
 export const tools: NavItem[] = [
   { id: "assistant", label: "AI Assistant", icon: MessageSquare },
   { id: "phoenix", label: "Phoenix", icon: Activity },
 ];
 
-export const library: NavItem[] = [
-  { id: "company-profile", label: "Company Profile", icon: Building2 },
-  { id: "reference-tables", label: "Reference Tables", icon: Table },
+export const library: LibrarySection[] = [
+  {
+    id: "library-main",
+    label: "",
+    items: [
+      { id: "company-profile", label: "Company Profile", icon: Building2 },
+      {
+        id: "conversation-reports",
+        label: "Conversation Reports",
+        icon: FileText,
+      },
+      { id: "reference-tables", label: "Reference Tables", icon: Table },
+    ],
+  },
 ];
 
 export const initialChats: ChatItem[] = [
