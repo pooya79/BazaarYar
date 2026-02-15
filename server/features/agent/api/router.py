@@ -10,6 +10,7 @@ from server.features.agent.api.message_builders import build_messages
 from server.features.agent.api.schemas import AgentRequest, AgentResponse
 from server.features.agent.api import streaming
 from server.features.agent.schemas import stream_event_schema
+from server.features.agent.sandbox.event_bus import AgentRequestContext, bind_request_context
 from server.features.agent.sandbox.session_executor import reset_conversation_sandbox
 from server.features.agent.service import extract_trace
 from server.features.settings.service import (
@@ -37,7 +38,15 @@ async def run_agent(
     model_settings = await resolve_effective_model_settings(session)
     company_profile = await resolve_effective_company_profile(session)
     agent = streaming.get_agent(model_settings, company_profile)
-    result = await agent.ainvoke({"messages": messages})
+    request_context = AgentRequestContext(
+        latest_user_message=(payload.message or "").strip(),
+        latest_user_attachment_ids=tuple(
+            item.strip() for item in (payload.attachment_ids or []) if item.strip()
+        ),
+        conversation_id=payload.conversation_id,
+    )
+    with bind_request_context(request_context):
+        result = await agent.ainvoke({"messages": messages})
     trace = extract_trace(result["messages"], model_name=model_settings.model_name)
     return AgentResponse(**trace)
 

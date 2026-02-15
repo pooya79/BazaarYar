@@ -103,14 +103,13 @@ def format_tool_result(message: ToolMessage, *, payload: dict[str, Any] | None =
         for item in input_files:
             if not isinstance(item, dict):
                 continue
-            attachment_id = str(item.get("attachment_id") or "").strip()
             original_filename = str(item.get("original_filename") or "").strip()
             sandbox_filename = str(item.get("sandbox_filename") or "").strip()
             input_path = str(item.get("input_path") or "").strip()
             lines.append(
                 (
                     f"- {sandbox_filename or '[unknown]'} "
-                    f"(attachment_id={attachment_id or '-'}, original={original_filename or '-'}, "
+                    f"(original={original_filename or '-'}, "
                     f"path={input_path or '-'})"
                 )
             )
@@ -119,11 +118,10 @@ def format_tool_result(message: ToolMessage, *, payload: dict[str, Any] | None =
         for item in artifacts:
             if not isinstance(item, dict):
                 continue
-            artifact_id = str(item.get("id") or "").strip()
             filename = str(item.get("filename") or "").strip()
             content_type = str(item.get("content_type") or "").strip()
             lines.append(
-                f"- {filename or '[unnamed]'} (id={artifact_id or '-'}, content_type={content_type or '-'})"
+                f"- {filename or '[unnamed]'} (content_type={content_type or '-'})"
             )
     if stdout_tail:
         lines.append("stdout:")

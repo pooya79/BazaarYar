@@ -269,13 +269,12 @@ function payloadInputFileRows(
       rows.push(safeStringify(item));
       continue;
     }
-    const attachmentId = String(item.attachment_id ?? "").trim() || "-";
     const originalFilename = String(item.original_filename ?? "").trim() || "-";
     const sandboxFilename =
       String(item.sandbox_filename ?? "").trim() || "[unknown]";
     const inputPath = String(item.input_path ?? "").trim() || "-";
     rows.push(
-      `${sandboxFilename} (attachment_id=${attachmentId}, original=${originalFilename}, path=${inputPath})`,
+      `${sandboxFilename} (original=${originalFilename}, path=${inputPath})`,
     );
   }
   return rows;
@@ -295,10 +294,9 @@ function payloadArtifactRows(
       rows.push(safeStringify(item));
       continue;
     }
-    const id = String(item.id ?? "").trim() || "-";
     const filename = String(item.filename ?? "").trim() || "[unnamed]";
     const contentType = String(item.content_type ?? "").trim() || "-";
-    rows.push(`${filename} (id=${id}, content_type=${contentType})`);
+    rows.push(`${filename} (content_type=${contentType})`);
   }
   return rows;
 }

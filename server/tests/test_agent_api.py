@@ -729,6 +729,8 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     assert "sandbox_reused: true" in tool_result_payload["content"]
     assert "input_files:" in tool_result_payload["content"]
     assert "01_campaign.csv" in tool_result_payload["content"]
+    assert "attachment_id=" not in tool_result_payload["content"]
+    assert "(id=" not in tool_result_payload["content"]
     assert final_payload is not None
 
     conversation_id = final_payload["conversation_id"]
@@ -740,6 +742,8 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     assert "artifact_attachments:" in tool_result_message["content"]
     assert "sandbox_reused: true" in tool_result_message["content"]
     assert "input_files:" in tool_result_message["content"]
+    assert "attachment_id=" not in tool_result_message["content"]
+    assert "(id=" not in tool_result_message["content"]
 
 
 def test_stream_injects_live_sandbox_status_message(monkeypatch):

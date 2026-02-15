@@ -511,7 +511,6 @@ def build_attachment_message_parts(attachment_ids: list[str]) -> tuple[str, list
                 "\n".join(
                     [
                         f"Attachment {index}",
-                        f"- id: {item.id}",
                         f"- filename: {item.filename}",
                         "- delivery: inline image block",
                     ]
@@ -533,7 +532,6 @@ def build_attachment_message_parts(attachment_ids: list[str]) -> tuple[str, list
                 "\n".join(
                     [
                         f"Attachment {index}",
-                        f"- id: {item.id}",
                         f"- filename: {item.filename}",
                         "- delivery: inline pdf file block",
                     ]
@@ -543,7 +541,6 @@ def build_attachment_message_parts(attachment_ids: list[str]) -> tuple[str, list
 
         lines = [
             f"Attachment {index}",
-            f"- id: {item.id}",
             f"- filename: {item.filename}",
             f"- media_type: {item.media_type}",
             f"- content_type: {item.content_type}",
@@ -580,7 +577,6 @@ def build_attachment_message_parts_for_items(
                 "\n".join(
                     [
                         f"Attachment {index}",
-                        f"- id: {item.id}",
                         f"- filename: {item.filename}",
                         "- delivery: inline image block",
                     ]
@@ -601,7 +597,6 @@ def build_attachment_message_parts_for_items(
                 "\n".join(
                     [
                         f"Attachment {index}",
-                        f"- id: {item.id}",
                         f"- filename: {item.filename}",
                         "- delivery: inline pdf file block",
                     ]
@@ -611,7 +606,6 @@ def build_attachment_message_parts_for_items(
 
         lines = [
             f"Attachment {index}",
-            f"- id: {item.id}",
             f"- filename: {item.filename}",
             f"- media_type: {item.media_type}",
             f"- content_type: {item.content_type}",

@@ -19,11 +19,14 @@ async def _fake_session_cm():
     yield object()
 
 
-def test_python_sandbox_tool_exposes_attachment_ids_argument():
+def test_python_sandbox_tool_exposes_no_file_selector_args():
     args = sandbox_tool.run_python_code.args
-    assert "attachment_ids" in args
+    assert "input_filenames" not in args
+    assert "attachment_ids" not in args
     assert "attachment_ids_json" not in args
     assert sandbox_tool.run_python_code.name == "run_python_code"
+    assert "input_filenames" not in sandbox_tool.run_python_code.description
+    assert "attachment_ids" not in sandbox_tool.run_python_code.description
 
 
 @pytest.mark.asyncio
@@ -73,14 +76,99 @@ async def test_python_sandbox_tool_allows_no_explicit_intent_and_no_attachments(
 
 
 @pytest.mark.asyncio
-async def test_python_sandbox_tool_accepts_attachment_ids_as_list(monkeypatch):
+async def test_python_sandbox_tool_mounts_all_conversation_attachments(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "sandbox_tool_enabled", True)
     monkeypatch.setattr(settings, "sandbox_max_code_chars", 20_000)
+    monkeypatch.setattr(settings, "sandbox_persist_sessions", False)
+
+    context = SimpleNamespace(
+        latest_user_attachment_ids=("att-latest-only",),
+        conversation_id="5e07ec16-b499-4c34-98c3-044f2a955c12",
+    )
+    attachments = [
+        SimpleNamespace(
+            id="att-1",
+            filename="a.csv",
+            storage_path="server/storage/uploads/files/a.csv",
+            content_type="text/csv",
+        ),
+        SimpleNamespace(
+            id="att-2",
+            filename="b.csv",
+            storage_path="server/storage/uploads/files/b.csv",
+            content_type="text/csv",
+        ),
+        SimpleNamespace(
+            id="att-3",
+            filename="c.csv",
+            storage_path="server/storage/uploads/files/c.csv",
+            content_type="text/csv",
+        ),
+    ]
 
     async def _fake_load_attachments_for_ids(_session, attachment_ids, *, allow_json_fallback=True):
         _ = allow_json_fallback
-        assert attachment_ids == ["att-1", "att-2"]
+        assert attachment_ids == ["att-1", "att-2", "att-3"]
+        return attachments
+
+    async def _fake_execute_sandbox(request, *, on_status=None):
+        if on_status is not None:
+            await on_status("executing", "Running sandbox")
+        assert [item.attachment_id for item in request.files] == ["att-1", "att-2", "att-3"]
+        return SandboxExecutionResult(
+            run_id=request.run_id,
+            status="succeeded",
+            summary="Sandbox execution completed.",
+            stdout_tail="ok",
+            stderr_tail="",
+            artifacts=[],
+        )
+
+    async def _fake_save_uploaded_attachments(_session, uploaded_files):
+        assert uploaded_files == []
+        return []
+
+    monkeypatch.setattr(sandbox_tool, "AsyncSessionLocal", _fake_session_cm)
+    monkeypatch.setattr(sandbox_tool, "get_request_context", lambda: context)
+    async def _fake_conversation_attachment_ids(_session, *, conversation_id):
+        if conversation_id == "5e07ec16-b499-4c34-98c3-044f2a955c12":
+            return ["att-1", "att-2", "att-3"]
+        return []
+
+    monkeypatch.setattr(
+        sandbox_tool,
+        "_conversation_attachment_ids",
+        _fake_conversation_attachment_ids,
+    )
+    monkeypatch.setattr(sandbox_tool, "load_attachments_for_ids", _fake_load_attachments_for_ids)
+    monkeypatch.setattr(sandbox_tool, "execute_sandbox", _fake_execute_sandbox)
+    monkeypatch.setattr(sandbox_tool, "save_uploaded_attachments", _fake_save_uploaded_attachments)
+
+    output = await sandbox_tool.run_python_code.ainvoke(
+        {
+            "code": "print('hello')",
+        }
+    )
+
+    payload = json.loads(output)
+    assert payload["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_python_sandbox_tool_uses_only_conversation_attachments_when_conversation_has_none(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "sandbox_tool_enabled", True)
+    monkeypatch.setattr(settings, "sandbox_max_code_chars", 20_000)
+    monkeypatch.setattr(settings, "sandbox_persist_sessions", False)
+
+    context = SimpleNamespace(
+        latest_user_attachment_ids=("att-ctx",),
+        conversation_id="5e07ec16-b499-4c34-98c3-044f2a955c12",
+    )
+    async def _fake_load_attachments_for_ids(_session, attachment_ids, *, allow_json_fallback=True):
+        _ = allow_json_fallback
+        assert attachment_ids == []
         return []
 
     async def _fake_execute_sandbox(request, *, on_status=None):
@@ -101,16 +189,21 @@ async def test_python_sandbox_tool_accepts_attachment_ids_as_list(monkeypatch):
         return []
 
     monkeypatch.setattr(sandbox_tool, "AsyncSessionLocal", _fake_session_cm)
+    monkeypatch.setattr(sandbox_tool, "get_request_context", lambda: context)
+    async def _fake_conversation_attachment_ids(_session, *, conversation_id):
+        _ = conversation_id
+        return []
+
+    monkeypatch.setattr(
+        sandbox_tool,
+        "_conversation_attachment_ids",
+        _fake_conversation_attachment_ids,
+    )
     monkeypatch.setattr(sandbox_tool, "load_attachments_for_ids", _fake_load_attachments_for_ids)
     monkeypatch.setattr(sandbox_tool, "execute_sandbox", _fake_execute_sandbox)
     monkeypatch.setattr(sandbox_tool, "save_uploaded_attachments", _fake_save_uploaded_attachments)
 
-    output = await sandbox_tool.run_python_code.ainvoke(
-        {
-            "code": "print('hello')",
-            "attachment_ids": ["att-1", "att-2"],
-        }
-    )
+    output = await sandbox_tool.run_python_code.ainvoke({"code": "print('hello')"})
 
     payload = json.loads(output)
     assert payload["status"] == "succeeded"
