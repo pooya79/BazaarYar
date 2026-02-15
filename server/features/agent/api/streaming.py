@@ -58,8 +58,11 @@ from server.features.chat import (
     save_uploaded_attachments,
     save_user_message_with_attachments,
 )
-from server.features.settings.service import resolve_effective_model_settings
-from server.features.settings.types import ModelSettingsResolved
+from server.features.settings.service import (
+    resolve_effective_company_profile,
+    resolve_effective_model_settings,
+)
+from server.features.settings.types import CompanyProfileResolved, ModelSettingsResolved
 from server.features.shared.ids import parse_uuid
 
 
@@ -164,6 +167,7 @@ async def stream_agent_response(
 
     settings = get_settings()
     model_settings = await resolve_effective_model_settings(session)
+    company_profile = await resolve_effective_company_profile(session)
     context_messages = await build_context_window_for_model(
         session,
         conversation_id=conversation.id,
@@ -263,7 +267,7 @@ async def stream_agent_response(
 
         async def _producer() -> None:
             nonlocal producer_error, streamed_text_buffer
-            agent = get_agent(model_settings)
+            agent = get_agent(model_settings, company_profile)
             final_ai: AIMessage | None = None
             request_context = AgentRequestContext(
                 latest_user_message=user_message,
@@ -479,5 +483,8 @@ async def stream_agent_response(
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
-def get_agent(model_settings: ModelSettingsResolved):
-    return build_agent(model_settings)
+def get_agent(
+    model_settings: ModelSettingsResolved,
+    company_profile: CompanyProfileResolved,
+):
+    return build_agent(model_settings, company_profile)

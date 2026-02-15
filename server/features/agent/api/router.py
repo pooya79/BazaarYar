@@ -12,7 +12,10 @@ from server.features.agent.api import streaming
 from server.features.agent.schemas import stream_event_schema
 from server.features.agent.sandbox.session_executor import reset_conversation_sandbox
 from server.features.agent.service import extract_trace
-from server.features.settings.service import resolve_effective_model_settings
+from server.features.settings.service import (
+    resolve_effective_company_profile,
+    resolve_effective_model_settings,
+)
 from server.features.shared.ids import parse_uuid
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -32,7 +35,8 @@ async def run_agent(
     if not messages:
         raise HTTPException(status_code=400, detail="Provide message or history.")
     model_settings = await resolve_effective_model_settings(session)
-    agent = streaming.get_agent(model_settings)
+    company_profile = await resolve_effective_company_profile(session)
+    agent = streaming.get_agent(model_settings, company_profile)
     result = await agent.ainvoke({"messages": messages})
     trace = extract_trace(result["messages"], model_name=model_settings.model_name)
     return AgentResponse(**trace)

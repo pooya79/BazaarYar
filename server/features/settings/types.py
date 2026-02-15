@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ReasoningEffort = Literal["low", "medium", "high"]
 ModelSettingsSource = Literal["database", "environment_defaults"]
+CompanyProfileSource = Literal["database", "defaults"]
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,14 @@ class ModelSettingsResolved:
     source: ModelSettingsSource
 
 
+@dataclass(frozen=True)
+class CompanyProfileResolved:
+    name: str
+    description: str
+    enabled: bool
+    source: CompanyProfileSource
+
+
 class ModelSettingsResponse(BaseModel):
     model_name: str
     base_url: str
@@ -31,6 +40,13 @@ class ModelSettingsResponse(BaseModel):
     source: ModelSettingsSource
 
 
+class CompanyProfileResponse(BaseModel):
+    name: str
+    description: str
+    enabled: bool
+    source: CompanyProfileSource
+
+
 class ModelSettingsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,3 +56,11 @@ class ModelSettingsPatch(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     reasoning_effort: ReasoningEffort | None = None
     reasoning_enabled: bool | None = None
+
+
+class CompanyProfilePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    enabled: bool | None = None

@@ -9,15 +9,12 @@ from langchain.tools import tool
 
 from server.features.agent.prompts import (
     ADD_NUMBERS_TOOL_DESCRIPTION,
-    AGENT_SYSTEM_PROMPT,
     REVERSE_TEXT_TOOL_DESCRIPTION,
     UTC_TIME_TOOL_DESCRIPTION,
 )
 from server.features.agent.sandbox import PYTHON_SANDBOX_TOOLS
 from server.features.agent.usage import extract_usage
 from server.core.config import get_settings
-
-SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT
 
 
 @tool(description=ADD_NUMBERS_TOOL_DESCRIPTION)
@@ -48,11 +45,11 @@ def _build_tools() -> list[Any]:
 TOOLS = _build_tools()
 
 
-def build_agent_runtime(model: Any):
+def build_agent_runtime(model: Any, *, system_prompt: str):
     return create_agent(
         model=model,
         tools=TOOLS,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
     )
 
 

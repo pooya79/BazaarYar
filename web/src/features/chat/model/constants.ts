@@ -1,5 +1,6 @@
 import {
   Activity,
+  Building2,
   Calendar,
   Globe,
   Mail,
@@ -16,6 +17,7 @@ export const tools: NavItem[] = [
 ];
 
 export const library: NavItem[] = [
+  { id: "company-profile", label: "Company Profile", icon: Building2 },
   { id: "reference-tables", label: "Reference Tables", icon: Table },
 ];
 

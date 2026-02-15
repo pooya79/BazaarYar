@@ -4,6 +4,7 @@ export const modelSettingsSourceSchema = z.enum([
   "database",
   "environment_defaults",
 ]);
+export const companyProfileSourceSchema = z.enum(["database", "defaults"]);
 
 export const reasoningEffortSchema = z.enum(["low", "medium", "high"]);
 
@@ -33,9 +34,35 @@ export const resetModelSettingsResponseSchema = z.object({
   reset: z.boolean(),
 });
 
+export const companyProfileResponseSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  source: companyProfileSourceSchema,
+});
+
+export const companyProfilePatchInputSchema = z
+  .object({
+    name: z.string().max(255).optional(),
+    description: z.string().optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
+export const resetCompanyProfileResponseSchema = z.object({
+  reset: z.boolean(),
+});
+
 export type ModelSettingsSource = z.infer<typeof modelSettingsSourceSchema>;
+export type CompanyProfileSource = z.infer<typeof companyProfileSourceSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelSettingsResponse = z.infer<typeof modelSettingsResponseSchema>;
 export type ModelSettingsPatchInput = z.infer<
   typeof modelSettingsPatchInputSchema
+>;
+export type CompanyProfileResponse = z.infer<
+  typeof companyProfileResponseSchema
+>;
+export type CompanyProfilePatchInput = z.infer<
+  typeof companyProfilePatchInputSchema
 >;

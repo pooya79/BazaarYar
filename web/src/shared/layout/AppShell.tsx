@@ -59,6 +59,8 @@ export function AppShell({ children }: AppShellProps) {
   );
 
   const isReferenceTablesRoute = pathname.startsWith("/reference-tables");
+  const isModelSettingsRoute = pathname.startsWith("/settings/model");
+  const isCompanySettingsRoute = pathname.startsWith("/settings/company");
   const isSettingsRoute = pathname.startsWith("/settings");
   const activeChatId = useMemo(() => {
     const match = pathname.match(/^\/c\/([^/]+)$/);
@@ -67,13 +69,24 @@ export function AppShell({ children }: AppShellProps) {
 
   const displayToolId = isReferenceTablesRoute
     ? "reference-tables"
-    : activeTool;
+    : isCompanySettingsRoute
+      ? "company-profile"
+      : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
-    if (isSettingsRoute) {
+    if (isModelSettingsRoute) {
       return {
         pageTitle: "Model Settings",
         pageIcon: SettingsIcon,
+      };
+    }
+    if (isCompanySettingsRoute) {
+      const companyProfileItem = library.find(
+        (item) => item.id === "company-profile",
+      );
+      return {
+        pageTitle: companyProfileItem?.label ?? "Company Profile",
+        pageIcon: companyProfileItem?.icon ?? SettingsIcon,
       };
     }
 
@@ -84,7 +97,12 @@ export function AppShell({ children }: AppShellProps) {
       pageTitle: match.label,
       pageIcon: match.icon,
     };
-  }, [displayToolId, isSettingsRoute, visibleTools]);
+  }, [
+    displayToolId,
+    isCompanySettingsRoute,
+    isModelSettingsRoute,
+    visibleTools,
+  ]);
 
   const mapChatItem = useCallback(
     (conversation: ConversationSummary): ChatItem => ({
@@ -239,6 +257,8 @@ export function AppShell({ children }: AppShellProps) {
     setChatMenuOpenId(null);
     if (toolId === "reference-tables") {
       router.push("/reference-tables");
+    } else if (toolId === "company-profile") {
+      router.push("/settings/company");
     } else if (isReferenceTablesRoute || isSettingsRoute) {
       router.push("/");
     }

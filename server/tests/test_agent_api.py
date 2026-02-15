@@ -15,7 +15,7 @@ agents_api = importlib.import_module("server.features.agent.api.streaming")
 agent_router_api = importlib.import_module("server.features.agent.api.router")
 conversations_api = importlib.import_module("server.features.chat.api")
 from server.features.chat import ConversationListEntry, ConversationNotFoundError
-from server.features.settings.types import ModelSettingsResolved
+from server.features.settings.types import CompanyProfileResolved, ModelSettingsResolved
 from server.main import app
 
 
@@ -410,8 +410,18 @@ def _patch_memory_store(monkeypatch):
             source="environment_defaults",
         )
 
+    async def _fake_company_profile(_session):
+        return CompanyProfileResolved(
+            name="",
+            description="",
+            enabled=True,
+            source="defaults",
+        )
+
     monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agents_api, "resolve_effective_company_profile", _fake_company_profile)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_company_profile", _fake_company_profile)
 
     app.dependency_overrides[get_db_session] = _override_db
     return store
@@ -479,8 +489,18 @@ def test_agent_non_stream_uses_overridden_model_settings(monkeypatch):
             source="database",
         )
 
+    async def _fake_company_profile(_session):
+        return CompanyProfileResolved(
+            name="Acme",
+            description="Marketing analytics",
+            enabled=True,
+            source="database",
+        )
+
     monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agents_api, "resolve_effective_company_profile", _fake_company_profile)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_company_profile", _fake_company_profile)
 
     client = TestClient(app)
     response = client.post("/api/agent", json={"message": "What time is it?"})

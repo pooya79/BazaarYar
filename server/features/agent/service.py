@@ -5,17 +5,26 @@ from typing import Any, Iterable
 from langchain_core.messages import AIMessage, BaseMessage
 
 from server.features.agent.models import openailike_model_spec
+from server.features.agent.prompts.system_prompt import build_agent_system_prompt
 from server.features.agent.runtime import (
     build_agent_runtime,
     extract_trace as extract_trace_base,
     split_openai_like_content,
 )
-from server.features.settings.types import ModelSettingsResolved
+from server.features.settings.types import CompanyProfileResolved, ModelSettingsResolved
 
 
-def build_agent(model_settings: ModelSettingsResolved) -> Any:
+def build_agent(
+    model_settings: ModelSettingsResolved,
+    company_profile: CompanyProfileResolved,
+) -> Any:
     model_spec = openailike_model_spec(model_settings)
-    return build_agent_runtime(model_spec.build_model())
+    system_prompt = build_agent_system_prompt(
+        company_name=company_profile.name,
+        company_description=company_profile.description,
+        company_enabled=company_profile.enabled,
+    )
+    return build_agent_runtime(model_spec.build_model(), system_prompt=system_prompt)
 
 
 def split_ai_content(message: AIMessage) -> tuple[list[str], list[str]]:

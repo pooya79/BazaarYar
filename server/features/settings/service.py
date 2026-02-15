@@ -7,7 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.core.config import get_settings
 
 from . import repo
-from .types import ModelSettingsPatch, ModelSettingsResolved, ModelSettingsResponse, ReasoningEffort
+from .types import (
+    CompanyProfilePatch,
+    CompanyProfileResolved,
+    CompanyProfileResponse,
+    ModelSettingsPatch,
+    ModelSettingsResolved,
+    ModelSettingsResponse,
+    ReasoningEffort,
+)
 
 
 def default_model_settings_from_env() -> ModelSettingsResolved:
@@ -39,6 +47,28 @@ async def resolve_effective_model_settings(session: AsyncSession) -> ModelSettin
     )
 
 
+def default_company_profile() -> CompanyProfileResolved:
+    return CompanyProfileResolved(
+        name="",
+        description="",
+        enabled=True,
+        source="defaults",
+    )
+
+
+async def resolve_effective_company_profile(session: AsyncSession) -> CompanyProfileResolved:
+    row = await repo.get_global_company_profile(session)
+    if row is None:
+        return default_company_profile()
+
+    return CompanyProfileResolved(
+        name=row.name,
+        description=row.description,
+        enabled=row.enabled,
+        source="database",
+    )
+
+
 def _preview_api_key(value: str) -> str | None:
     cleaned = value.strip()
     if not cleaned:
@@ -58,6 +88,15 @@ def to_model_settings_response(settings: ModelSettingsResolved) -> ModelSettings
         reasoning_enabled=settings.reasoning_enabled,
         has_api_key=bool(settings.api_key.strip()),
         api_key_preview=preview,
+        source=settings.source,
+    )
+
+
+def to_company_profile_response(settings: CompanyProfileResolved) -> CompanyProfileResponse:
+    return CompanyProfileResponse(
+        name=settings.name,
+        description=settings.description,
+        enabled=settings.enabled,
         source=settings.source,
     )
 
@@ -107,3 +146,41 @@ async def patch_model_settings(
 
 async def reset_model_settings(session: AsyncSession) -> bool:
     return await repo.delete_global_model_settings(session)
+
+
+async def patch_company_profile(
+    session: AsyncSession,
+    patch_payload: CompanyProfilePatch,
+) -> CompanyProfileResolved:
+    current = await resolve_effective_company_profile(session)
+    patch_data = patch_payload.model_dump(exclude_unset=True)
+    if not patch_data:
+        return current
+
+    if "name" in patch_data:
+        name = str(patch_data["name"] or "").strip()
+    else:
+        name = current.name
+
+    if "description" in patch_data:
+        description = str(patch_data["description"] or "").strip()
+    else:
+        description = current.description
+
+    enabled = bool(patch_data.get("enabled", current.enabled))
+    row = await repo.upsert_global_company_profile(
+        session,
+        name=name,
+        description=description,
+        enabled=enabled,
+    )
+    return CompanyProfileResolved(
+        name=row.name,
+        description=row.description,
+        enabled=row.enabled,
+        source="database",
+    )
+
+
+async def reset_company_profile(session: AsyncSession) -> bool:
+    return await repo.delete_global_company_profile(session)
