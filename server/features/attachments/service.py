@@ -52,8 +52,8 @@ _ALLOWED_EXTENSIONS = {
     ".webp",
     ".gif",
 }
-_TEXT_PREVIEW_LIMIT = 8_000
-_TABLE_PREVIEW_ROW_LIMIT = 20
+_TEXT_PREVIEW_LIMIT = 2_000
+_TABLE_PREVIEW_ROW_LIMIT = 5
 _TABLE_PREVIEW_COL_LIMIT = 20
 
 
@@ -547,7 +547,9 @@ def build_attachment_message_parts(attachment_ids: list[str]) -> tuple[str, list
             f"- size_bytes: {item.size_bytes}",
         ]
         if item.preview_text:
-            lines.append("- extracted_content:")
+            lines.append(
+                "- extracted_content_preview: This is a preview of the actual content; full content may be larger."
+            )
             lines.append(item.preview_text)
         elif item.extraction_note:
             lines.append(f"- extraction_note: {item.extraction_note}")
@@ -612,7 +614,9 @@ def build_attachment_message_parts_for_items(
             f"- size_bytes: {item.size_bytes}",
         ]
         if item.preview_text:
-            lines.append("- extracted_content:")
+            lines.append(
+                "- extracted_content_preview: This is a preview of the actual content; full content may be larger."
+            )
             lines.append(item.preview_text)
         elif item.extraction_note:
             lines.append(f"- extraction_note: {item.extraction_note}")

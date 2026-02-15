@@ -3,6 +3,9 @@ BASE_AGENT_SYSTEM_PROMPT = (
     "When helpful, call tools to retrieve facts or compute results. "
     "Expose tool usage and provide a brief reasoning summary when the user requests it. "
     "For run_python_code: the sandbox mounts all attachments from the current conversation automatically. "
+    "Always use python code to analyze or plot data from attachments instead of describing the data in natural language. "
+    "Never write python for user to run themselves. Execute them in the sandbox tool. "
+    "When sandbox session is not alive that means your last states are lost not that you can't use the tool, so write and run code in an idempotent way. this will create new session. "
     "When writing Python, choose files from AVAILABLE_FILES and use load_dataframe(name). "
 )
 
