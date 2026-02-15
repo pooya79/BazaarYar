@@ -24,57 +24,47 @@ const isAbortLikeError = (error: unknown, signal?: AbortSignal) =>
   signal?.aborted ||
   (error instanceof DOMException && error.name === "AbortError");
 
+export type ReportEditorMode = "create" | "edit";
+
 export function useReports() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeQuery, setActiveQuery] = useState("");
-
-  const [createTitle, setCreateTitle] = useState("");
-  const [createPreview, setCreatePreview] = useState("");
-  const [createContent, setCreateContent] = useState("");
-  const [createEnabled, setCreateEnabled] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<ReportEditorMode>("create");
   const [selectedReport, setSelectedReport] = useState<ReportDetail | null>(
     null,
   );
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [editTitle, setEditTitle] = useState("");
-  const [editPreview, setEditPreview] = useState("");
-  const [editContent, setEditContent] = useState("");
-  const [editEnabled, setEditEnabled] = useState(true);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
+
+  const [title, setTitle] = useState("");
+  const [preview, setPreview] = useState("");
+  const [content, setContent] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [togglingReportId, setTogglingReportId] = useState<string | null>(null);
 
-  const refreshReports = useCallback(
-    async (signal?: AbortSignal) => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const items = await listReports({
-          q: activeQuery,
-          includeDisabled: true,
-          signal,
-        });
-        setReports(items);
-      } catch (loadError) {
-        if (isAbortLikeError(loadError, signal)) {
-          return;
-        }
-        setError(parseErrorMessage(loadError, "Failed to load reports."));
-      } finally {
-        setIsLoading(false);
+  const refreshReports = useCallback(async (signal?: AbortSignal) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const items = await listReports({
+        includeDisabled: true,
+        signal,
+      });
+      setReports(items);
+    } catch (loadError) {
+      if (isAbortLikeError(loadError, signal)) {
+        return;
       }
-    },
-    [activeQuery],
-  );
+      setError(parseErrorMessage(loadError, "Failed to load reports."));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,18 +72,42 @@ export function useReports() {
     return () => controller.abort();
   }, [refreshReports]);
 
-  const openReportEditor = useCallback(async (reportId: string) => {
+  const closeEditor = useCallback(() => {
+    setIsEditorOpen(false);
+    setSelectedReport(null);
+    setIsLoadingDetail(false);
+    setFormError(null);
+  }, []);
+
+  const openCreateEditor = useCallback(() => {
+    setEditorMode("create");
+    setSelectedReport(null);
+    setTitle("");
+    setPreview("");
+    setContent("");
+    setFormError(null);
+    setIsLoadingDetail(false);
+    setIsEditorOpen(true);
+  }, []);
+
+  const openEditEditor = useCallback(async (reportId: string) => {
+    setEditorMode("edit");
+    setSelectedReport(null);
+    setTitle("");
+    setPreview("");
+    setContent("");
+    setFormError(null);
     setIsLoadingDetail(true);
-    setEditError(null);
+    setIsEditorOpen(true);
+
     try {
       const detail = await getReport(reportId);
       setSelectedReport(detail);
-      setEditTitle(detail.title);
-      setEditPreview(detail.preview_text);
-      setEditContent(detail.content);
-      setEditEnabled(detail.enabled_for_agent);
+      setTitle(detail.title);
+      setPreview(detail.preview_text);
+      setContent(detail.content);
     } catch (loadError) {
-      setEditError(
+      setFormError(
         parseErrorMessage(loadError, "Failed to load report details."),
       );
     } finally {
@@ -101,148 +115,74 @@ export function useReports() {
     }
   }, []);
 
-  const closeReportEditor = useCallback(() => {
-    setSelectedReport(null);
-    setEditError(null);
-  }, []);
-
-  const submitSearch = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setActiveQuery(searchQuery.trim());
-    },
-    [searchQuery],
-  );
-
-  const clearSearch = useCallback(() => {
-    setSearchQuery("");
-    setActiveQuery("");
-  }, []);
-
-  const submitCreate = useCallback(
+  const submitEditor = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      const title = createTitle.trim();
-      const content = createContent.trim();
-      const preview = createPreview.trim();
 
-      if (!title || !content) {
-        setCreateError("Title and report content are required.");
+      const normalizedTitle = title.trim();
+      const normalizedContent = content.trim();
+      const normalizedPreview = preview.trim();
+      if (!normalizedTitle || !normalizedContent) {
+        setFormError("Title and report content are required.");
         return;
       }
 
-      const payload: ReportCreateInput = {
-        title,
-        content,
-        preview_text: preview ? preview : null,
-        enabled_for_agent: createEnabled,
-      };
-
-      setIsCreating(true);
-      setCreateError(null);
+      setIsSubmitting(true);
+      setFormError(null);
       try {
-        const created = await createReport(payload);
-        setCreateTitle("");
-        setCreatePreview("");
-        setCreateContent("");
-        setCreateEnabled(true);
-        setSelectedReport(created);
-        setEditTitle(created.title);
-        setEditPreview(created.preview_text);
-        setEditContent(created.content);
-        setEditEnabled(created.enabled_for_agent);
+        if (editorMode === "create") {
+          const payload: ReportCreateInput = {
+            title: normalizedTitle,
+            content: normalizedContent,
+            preview_text: normalizedPreview ? normalizedPreview : null,
+            enabled_for_agent: true,
+          };
+          await createReport(payload);
+        } else {
+          if (!selectedReport) {
+            return;
+          }
+
+          const payload: ReportUpdateInput = {};
+          if (normalizedTitle !== selectedReport.title) {
+            payload.title = normalizedTitle;
+          }
+          if (normalizedContent !== selectedReport.content) {
+            payload.content = normalizedContent;
+          }
+          if (normalizedPreview !== selectedReport.preview_text) {
+            payload.preview_text = normalizedPreview;
+          }
+
+          if (Object.keys(payload).length > 0) {
+            await updateReport(selectedReport.id, payload);
+          }
+        }
+
         await refreshReports();
+        closeEditor();
       } catch (submitError) {
-        setCreateError(
-          parseErrorMessage(submitError, "Failed to create report."),
+        setFormError(
+          parseErrorMessage(
+            submitError,
+            editorMode === "create"
+              ? "Failed to create report."
+              : "Failed to save report.",
+          ),
         );
       } finally {
-        setIsCreating(false);
-      }
-    },
-    [createContent, createEnabled, createPreview, createTitle, refreshReports],
-  );
-
-  const submitEdit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!selectedReport) {
-        return;
-      }
-
-      const title = editTitle.trim();
-      const content = editContent.trim();
-      const preview = editPreview.trim();
-      if (!title || !content) {
-        setEditError("Title and report content are required.");
-        return;
-      }
-
-      const payload: ReportUpdateInput = {};
-      if (title !== selectedReport.title) {
-        payload.title = title;
-      }
-      if (content !== selectedReport.content) {
-        payload.content = content;
-      }
-      if (preview !== selectedReport.preview_text) {
-        payload.preview_text = preview;
-      }
-      if (editEnabled !== selectedReport.enabled_for_agent) {
-        payload.enabled_for_agent = editEnabled;
-      }
-
-      if (Object.keys(payload).length === 0) {
-        return;
-      }
-
-      setIsSavingEdit(true);
-      setEditError(null);
-      try {
-        const updated = await updateReport(selectedReport.id, payload);
-        setSelectedReport(updated);
-        setEditTitle(updated.title);
-        setEditPreview(updated.preview_text);
-        setEditContent(updated.content);
-        setEditEnabled(updated.enabled_for_agent);
-        await refreshReports();
-      } catch (submitError) {
-        setEditError(parseErrorMessage(submitError, "Failed to save report."));
-      } finally {
-        setIsSavingEdit(false);
+        setIsSubmitting(false);
       }
     },
     [
-      editContent,
-      editEnabled,
-      editPreview,
-      editTitle,
+      closeEditor,
+      content,
+      editorMode,
+      preview,
       refreshReports,
       selectedReport,
+      title,
     ],
-  );
-
-  const toggleAgentAccess = useCallback(
-    async (report: ReportSummary) => {
-      setTogglingReportId(report.id);
-      try {
-        const updated = await updateReport(report.id, {
-          enabled_for_agent: !report.enabled_for_agent,
-        });
-        if (selectedReport?.id === report.id) {
-          setSelectedReport(updated);
-          setEditEnabled(updated.enabled_for_agent);
-        }
-        await refreshReports();
-      } catch (toggleError) {
-        window.alert(
-          parseErrorMessage(toggleError, "Failed to update report access."),
-        );
-      } finally {
-        setTogglingReportId(null);
-      }
-    },
-    [refreshReports, selectedReport?.id],
   );
 
   const removeReport = useCallback(
@@ -258,7 +198,7 @@ export function useReports() {
       try {
         await deleteReport(report.id);
         if (selectedReport?.id === report.id) {
-          closeReportEditor();
+          closeEditor();
         }
         await refreshReports();
       } catch (deleteError) {
@@ -269,7 +209,29 @@ export function useReports() {
         setDeletingReportId(null);
       }
     },
-    [closeReportEditor, refreshReports, selectedReport?.id],
+    [closeEditor, refreshReports, selectedReport?.id],
+  );
+
+  const toggleAgentAccess = useCallback(
+    async (report: ReportSummary) => {
+      setTogglingReportId(report.id);
+      try {
+        const updated = await updateReport(report.id, {
+          enabled_for_agent: !report.enabled_for_agent,
+        });
+        if (selectedReport?.id === report.id) {
+          setSelectedReport(updated);
+        }
+        await refreshReports();
+      } catch (toggleError) {
+        window.alert(
+          parseErrorMessage(toggleError, "Failed to update report access."),
+        );
+      } finally {
+        setTogglingReportId(null);
+      }
+    },
+    [refreshReports, selectedReport?.id],
   );
 
   return {
@@ -277,37 +239,22 @@ export function useReports() {
     reports,
     isLoading,
     error,
-    searchQuery,
-    setSearchQuery,
-    activeQuery,
-    submitSearch,
-    clearSearch,
-    createTitle,
-    setCreateTitle,
-    createPreview,
-    setCreatePreview,
-    createContent,
-    setCreateContent,
-    createEnabled,
-    setCreateEnabled,
-    isCreating,
-    createError,
-    submitCreate,
+    isEditorOpen,
+    editorMode,
     selectedReport,
     isLoadingDetail,
-    openReportEditor,
-    closeReportEditor,
-    editTitle,
-    setEditTitle,
-    editPreview,
-    setEditPreview,
-    editContent,
-    setEditContent,
-    editEnabled,
-    setEditEnabled,
-    isSavingEdit,
-    editError,
-    submitEdit,
+    title,
+    setTitle,
+    preview,
+    setPreview,
+    content,
+    setContent,
+    isSubmitting,
+    formError,
+    openCreateEditor,
+    openEditEditor,
+    closeEditor,
+    submitEditor,
     deleteReport: removeReport,
     deletingReportId,
     toggleAgentAccess,
