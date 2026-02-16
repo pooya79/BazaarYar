@@ -682,9 +682,9 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
                             {
                                 "attachment_id": "input-1",
                                 "original_filename": "campaign.csv",
-                                "sandbox_filename": "01_campaign.csv",
+                                "sandbox_filename": "campaign.csv",
                                 "content_type": "text/csv",
-                                "input_path": "/workspace/input/01_campaign.csv",
+                                "input_path": "/workspace/input/campaign.csv",
                             }
                         ],
                         "stdout_tail": "ok",
@@ -736,7 +736,7 @@ def test_stream_tool_result_artifacts_are_emitted_and_persisted(monkeypatch):
     assert "artifact_attachments:" in tool_result_payload["content"]
     assert "sandbox_reused: true" in tool_result_payload["content"]
     assert "input_files:" in tool_result_payload["content"]
-    assert "01_campaign.csv" in tool_result_payload["content"]
+    assert "campaign.csv" in tool_result_payload["content"]
     assert "attachment_id=" not in tool_result_payload["content"]
     assert "(id=" not in tool_result_payload["content"]
     assert final_payload is not None
@@ -766,7 +766,7 @@ def test_stream_injects_live_sandbox_status_message(monkeypatch):
             request_sequence=4,
             reason="alive",
             last_used_at=None,
-            available_files=["01_campaign.csv"],
+            available_files=["campaign.csv"],
         )
 
     monkeypatch.setattr(agents_api, "get_conversation_sandbox_status", _fake_status)

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 from pathlib import Path
 from typing import Awaitable, Callable
 
 from server.features.attachments import resolve_storage_path
+from server.features.agent.sandbox.filename_utils import (
+    allocate_sandbox_filename,
+    next_sandbox_prefix_start,
+)
 from server.features.agent.sandbox.sandbox_schema import (
     SandboxArtifact,
     SandboxExecutionRequest,
@@ -18,7 +21,6 @@ from server.features.agent.sandbox.sandbox_schema import (
 from server.core.config import get_settings
 
 _STATUS_CALLBACK = Callable[[str, str], Awaitable[None]]
-_FILENAME_TOKEN_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 _STDERR_TAIL_LIMIT = 8_000
 
 
@@ -26,11 +28,6 @@ def _sandbox_runs_root() -> Path:
     root = resolve_storage_path("server/storage/sandbox_runs")
     root.mkdir(parents=True, exist_ok=True)
     return root
-
-
-def _sanitize_filename(value: str) -> str:
-    cleaned = _FILENAME_TOKEN_RE.sub("_", value).strip("._")
-    return cleaned or "input"
 
 
 def _trim_tail(value: str, *, limit: int = _STDERR_TAIL_LIMIT) -> str:
@@ -92,13 +89,19 @@ def _prepare_workspace(
     output_dir.chmod(0o777)
 
     input_files: list[SandboxInputFileMapping] = []
-    for index, item in enumerate(request.files, start=1):
+    used_names: set[str] = set()
+    next_prefix = next_sandbox_prefix_start(used_names)
+    for item in request.files:
         source = resolve_storage_path(item.storage_path)
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"Attachment '{item.attachment_id}' file does not exist.")
 
-        safe_name = _sanitize_filename(item.filename)
-        target_name = f"{index:02d}_{safe_name}"
+        target_name, next_prefix = allocate_sandbox_filename(
+            item.filename,
+            used_names=used_names,
+            next_prefix=next_prefix,
+        )
+        used_names.add(target_name)
         target = input_dir / target_name
         shutil.copyfile(source, target)
         target.chmod(0o444)

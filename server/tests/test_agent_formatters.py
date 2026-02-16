@@ -28,8 +28,8 @@ def test_format_tool_result_hides_ids_from_formatted_text():
             {
                 "attachment_id": "att-1",
                 "original_filename": "campaign.csv",
-                "sandbox_filename": "01_campaign.csv",
-                "input_path": "/workspace/input/01_campaign.csv",
+                "sandbox_filename": "campaign.csv",
+                "input_path": "/workspace/input/campaign.csv",
             }
         ],
         "artifacts": [
@@ -46,7 +46,7 @@ def test_format_tool_result_hides_ids_from_formatted_text():
     assert "tool_call_id: call-1" in formatted
     assert "input_files:" in formatted
     assert "artifact_attachments:" in formatted
-    assert "01_campaign.csv (original=campaign.csv, path=/workspace/input/01_campaign.csv)" in formatted
+    assert "campaign.csv (original=campaign.csv, path=/workspace/input/campaign.csv)" in formatted
     assert "- plot.png (content_type=image/png)" in formatted
     assert "attachment_id=" not in formatted
     assert "(id=" not in formatted

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import shutil
 import socket
 import uuid
@@ -19,6 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
 from server.db.models import ConversationSandboxSession
+from server.features.agent.sandbox.filename_utils import (
+    allocate_sandbox_filename,
+    next_sandbox_prefix_start,
+)
 from server.features.agent.sandbox.sandbox_schema import (
     SandboxArtifact,
     SandboxExecutionRequest,
@@ -29,7 +32,6 @@ from server.features.agent.sandbox.sandbox_schema import (
 from server.features.attachments import resolve_storage_path
 
 _STATUS_CALLBACK = Callable[[str, str], Awaitable[None]]
-_FILENAME_TOKEN_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 _CONTAINER_NAME_PREFIX = "bazaaryar-sandbox-session-"
 
 
@@ -63,11 +65,6 @@ class SandboxSessionStatus:
     reason: str
     last_used_at: datetime | None
     available_files: list[str]
-
-
-def _sanitize_filename(value: str) -> str:
-    cleaned = _FILENAME_TOKEN_RE.sub("_", value).strip("._")
-    return cleaned or "input"
 
 
 def _sandbox_sessions_root() -> Path:
@@ -152,7 +149,7 @@ def _sync_input_files(
     manifest = _load_manifest(workspace_dir)
     by_attachment_id = {item.attachment_id: item for item in manifest}
     used_names = {item.sandbox_filename for item in manifest}
-    next_index = len(manifest) + 1
+    next_prefix = next_sandbox_prefix_start(used_names)
 
     for item in request.files:
         source = resolve_storage_path(item.storage_path)
@@ -167,12 +164,11 @@ def _sync_input_files(
                 target.chmod(0o444)
             continue
 
-        safe_name = _sanitize_filename(item.filename)
-        while True:
-            target_name = f"{next_index:02d}_{safe_name}"
-            next_index += 1
-            if target_name not in used_names:
-                break
+        target_name, next_prefix = allocate_sandbox_filename(
+            item.filename,
+            used_names=used_names,
+            next_prefix=next_prefix,
+        )
         used_names.add(target_name)
         target = input_dir / target_name
         shutil.copyfile(source, target)

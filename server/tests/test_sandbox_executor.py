@@ -127,7 +127,7 @@ async def test_execute_sandbox_builds_secure_docker_command_and_reads_artifacts(
         files=[
             SandboxInputFile(
                 attachment_id="a-1",
-                filename="input.csv",
+                filename="campaign data.csv",
                 storage_path=str(source_file),
                 content_type="text/csv",
             )
@@ -141,17 +141,17 @@ async def test_execute_sandbox_builds_secure_docker_command_and_reads_artifacts(
     assert result.artifacts[0].filename == "plot.png"
     assert result.stdout_tail == "done"
     assert result.input_files[0].attachment_id == "a-1"
-    assert result.input_files[0].sandbox_filename == "01_input.csv"
-    assert result.input_files[0].input_path == "/workspace/input/01_input.csv"
+    assert result.input_files[0].sandbox_filename == "campaign data.csv"
+    assert result.input_files[0].input_path == "/workspace/input/campaign data.csv"
 
     assert captured_job_payload is not None
     input_files = captured_job_payload["input_files"]
     assert isinstance(input_files, list)
     assert input_files[0]["attachment_id"] == "a-1"
-    assert input_files[0]["original_filename"] == "input.csv"
-    assert input_files[0]["sandbox_filename"] == "01_input.csv"
+    assert input_files[0]["original_filename"] == "campaign data.csv"
+    assert input_files[0]["sandbox_filename"] == "campaign data.csv"
     assert input_files[0]["content_type"] == "text/csv"
-    assert input_files[0]["input_path"] == "/workspace/input/01_input.csv"
+    assert input_files[0]["input_path"] == "/workspace/input/campaign data.csv"
 
     assert "--network" in captured_cmd
     assert captured_cmd[captured_cmd.index("--network") + 1] == "none"
@@ -268,3 +268,81 @@ async def test_execute_sandbox_rejects_oversized_artifact(monkeypatch, tmp_path:
 
     assert result.status == "failed"
     assert "exceeds size limit" in (result.summary or "")
+
+
+@pytest.mark.asyncio
+async def test_execute_sandbox_uses_prefixed_fallback_for_name_collisions(monkeypatch, tmp_path: Path):
+    source_file = tmp_path / "input.csv"
+    source_file.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "sandbox_max_runtime_seconds", 30)
+
+    captured_job_payload: dict[str, object] | None = None
+
+    async def _fake_create_subprocess_exec(*cmd, **_kwargs):
+        nonlocal captured_job_payload
+        mount = str(cmd[cmd.index("-v") + 1])
+        workspace = Path(mount.split(":", 1)[0])
+        captured_job_payload = json.loads((workspace / "job.json").read_text(encoding="utf-8"))
+        lines = [
+            json.dumps(
+                {
+                    "type": "result",
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "artifacts": [],
+                }
+            )
+        ]
+        return _FakeProcess(stdout_lines=lines, stderr_chunks=[], returncode=0)
+
+    monkeypatch.setattr(
+        "server.features.agent.sandbox.sandbox_executor.asyncio.create_subprocess_exec",
+        _fake_create_subprocess_exec,
+    )
+
+    request = SandboxExecutionRequest(
+        run_id="run-collisions",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="a-1",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            ),
+            SandboxInputFile(
+                attachment_id="a-2",
+                filename="01_campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            ),
+            SandboxInputFile(
+                attachment_id="a-3",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            ),
+        ],
+    )
+
+    result = await execute_sandbox(request)
+
+    assert result.status == "succeeded"
+    assert [item.sandbox_filename for item in result.input_files] == [
+        "campaign.csv",
+        "01_campaign.csv",
+        "02_campaign.csv",
+    ]
+    assert [item.input_path for item in result.input_files] == [
+        "/workspace/input/campaign.csv",
+        "/workspace/input/01_campaign.csv",
+        "/workspace/input/02_campaign.csv",
+    ]
+    assert captured_job_payload is not None
+    assert captured_job_payload["files"] == [
+        "campaign.csv",
+        "01_campaign.csv",
+        "02_campaign.csv",
+    ]

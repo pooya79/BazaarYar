@@ -12,7 +12,7 @@ import pytest
 
 from server.core.config import get_settings
 from server.features.agent.sandbox import session_executor
-from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest
+from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
 
 
 class _ScalarOneOrNoneResult:
@@ -235,9 +235,9 @@ async def test_get_conversation_sandbox_status_returns_alive_and_available_files
                 {
                     "attachment_id": "att-1",
                     "original_filename": "campaign.csv",
-                    "sandbox_filename": "01_campaign.csv",
+                    "sandbox_filename": "campaign data.csv",
                     "content_type": "text/csv",
-                    "input_path": "/workspace/input/01_campaign.csv",
+                    "input_path": "/workspace/input/campaign data.csv",
                 }
             ]
         ),
@@ -264,4 +264,125 @@ async def test_get_conversation_sandbox_status_returns_alive_and_available_files
     assert status.alive is True
     assert status.reason == "alive"
     assert status.request_sequence == 3
-    assert status.available_files == ["01_campaign.csv"]
+    assert status.available_files == ["campaign data.csv"]
+
+
+def test_sync_input_files_preserves_spaces_and_reuses_existing_mapping(tmp_path: Path):
+    workspace_dir = tmp_path / "workspace"
+    session_executor._ensure_workspace_dirs(workspace_dir)
+
+    source_file = tmp_path / "campaign.csv"
+    source_file.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    request = SandboxExecutionRequest(
+        run_id="run-1",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="att-1",
+                filename="campaign data.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            )
+        ],
+    )
+    manifest = session_executor._sync_input_files(workspace_dir, request)
+    assert manifest[0].sandbox_filename == "campaign data.csv"
+    assert manifest[0].input_path == "/workspace/input/campaign data.csv"
+
+    source_file.write_text("a,b\n3,4\n", encoding="utf-8")
+    manifest_after = session_executor._sync_input_files(workspace_dir, request)
+    assert len(manifest_after) == 1
+    assert manifest_after[0].sandbox_filename == "campaign data.csv"
+
+
+def test_sync_input_files_uses_prefixed_fallback_on_duplicate_filename(tmp_path: Path):
+    workspace_dir = tmp_path / "workspace"
+    session_executor._ensure_workspace_dirs(workspace_dir)
+
+    source_file = tmp_path / "campaign.csv"
+    source_file.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    first_request = SandboxExecutionRequest(
+        run_id="run-1",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="att-1",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            )
+        ],
+    )
+    first_manifest = session_executor._sync_input_files(workspace_dir, first_request)
+    assert first_manifest[0].sandbox_filename == "campaign.csv"
+
+    duplicate_request = SandboxExecutionRequest(
+        run_id="run-2",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="att-2",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            )
+        ],
+    )
+    second_manifest = session_executor._sync_input_files(workspace_dir, duplicate_request)
+    assert [item.sandbox_filename for item in second_manifest] == [
+        "campaign.csv",
+        "01_campaign.csv",
+    ]
+
+
+def test_sync_input_files_increments_prefix_when_fallback_already_taken(tmp_path: Path):
+    workspace_dir = tmp_path / "workspace"
+    session_executor._ensure_workspace_dirs(workspace_dir)
+
+    source_file = tmp_path / "campaign.csv"
+    source_file.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    seed_request = SandboxExecutionRequest(
+        run_id="run-1",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="att-1",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            ),
+            SandboxInputFile(
+                attachment_id="att-2",
+                filename="01_campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            ),
+        ],
+    )
+    seeded_manifest = session_executor._sync_input_files(workspace_dir, seed_request)
+    assert [item.sandbox_filename for item in seeded_manifest] == [
+        "campaign.csv",
+        "01_campaign.csv",
+    ]
+
+    duplicate_request = SandboxExecutionRequest(
+        run_id="run-2",
+        code="print('ok')",
+        files=[
+            SandboxInputFile(
+                attachment_id="att-3",
+                filename="campaign.csv",
+                storage_path=str(source_file),
+                content_type="text/csv",
+            )
+        ],
+    )
+    final_manifest = session_executor._sync_input_files(workspace_dir, duplicate_request)
+    assert [item.sandbox_filename for item in final_manifest] == [
+        "campaign.csv",
+        "01_campaign.csv",
+        "02_campaign.csv",
+    ]

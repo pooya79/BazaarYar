@@ -260,9 +260,9 @@ async def test_python_sandbox_tool_uses_request_context_attachments_and_returns_
                 SandboxInputFileMapping(
                     attachment_id="att-ctx",
                     original_filename="campaign_data.csv",
-                    sandbox_filename="01_campaign_data.csv",
+                    sandbox_filename="campaign_data.csv",
                     content_type="text/csv",
-                    input_path="/workspace/input/01_campaign_data.csv",
+                    input_path="/workspace/input/campaign_data.csv",
                 )
             ],
             artifacts=[],
@@ -290,9 +290,9 @@ async def test_python_sandbox_tool_uses_request_context_attachments_and_returns_
         {
             "attachment_id": "att-ctx",
             "original_filename": "campaign_data.csv",
-            "sandbox_filename": "01_campaign_data.csv",
+            "sandbox_filename": "campaign_data.csv",
             "content_type": "text/csv",
-            "input_path": "/workspace/input/01_campaign_data.csv",
+            "input_path": "/workspace/input/campaign_data.csv",
         }
     ]
 
