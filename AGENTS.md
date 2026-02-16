@@ -89,4 +89,4 @@ The agent platform is designed to support:
 - Use async routes for server
 - Agent model settings precedence: use DB global settings from `server/features/settings` when present, otherwise fallback to env defaults from `server/core/config.py`.
 - Never commit real API keys to repo files. Settings read APIs should return masked key previews only (no full secret echo).
-- Conversation reports retrieval for agent memory is tool-driven (on demand), not auto-injected into every turn; `create_conversation_report` requires explicit user confirmation intent.
+- Conversation reports retrieval for agent memory is tool-driven (on demand), not auto-injected into every turn.

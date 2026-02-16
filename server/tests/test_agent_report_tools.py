@@ -74,7 +74,8 @@ async def test_list_and_get_report_tools_return_payload(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_create_report_tool_requires_explicit_confirmation(monkeypatch):
+async def test_create_report_tool_creates_without_explicit_confirmation(monkeypatch):
+    report_id = str(uuid4())
     monkeypatch.setattr(report_tools, "AsyncSessionLocal", _fake_session_cm)
     monkeypatch.setattr(
         report_tools,
@@ -85,11 +86,21 @@ async def test_create_report_tool_requires_explicit_confirmation(monkeypatch):
         ),
     )
 
-    called = {"value": False}
-
-    async def _fake_create_report(*_args, **_kwargs):
-        called["value"] = True
-        raise AssertionError("Tool should not create a report without confirmation.")
+    async def _fake_create_report(
+        _session,
+        *,
+        title,
+        content,
+        preview_text,
+        enabled_for_agent,
+        source_conversation_id,
+    ):
+        assert title == "My report"
+        assert content == "Important summary"
+        assert preview_text is None
+        assert enabled_for_agent is True
+        assert source_conversation_id is not None
+        return _detail(report_id)
 
     monkeypatch.setattr(report_tools, "create_report", _fake_create_report)
 
@@ -97,8 +108,8 @@ async def test_create_report_tool_requires_explicit_confirmation(monkeypatch):
         {"title": "My report", "content": "Important summary"}
     )
     payload = json.loads(output)
-    assert "Missing explicit user confirmation" in payload["error"]
-    assert called["value"] is False
+    assert payload["report"]["id"] == report_id
+    assert "confirmed" not in payload["provenance"]
 
 
 @pytest.mark.asyncio
@@ -143,3 +154,30 @@ async def test_create_report_tool_uses_context_conversation_id(monkeypatch):
     payload = json.loads(output)
     assert payload["report"]["id"] == report_id
     assert payload["provenance"]["source_conversation_id"] == conversation_id
+    assert "confirmed" not in payload["provenance"]
+
+
+@pytest.mark.asyncio
+async def test_create_report_tool_error_payload_omits_confirmed(monkeypatch):
+    monkeypatch.setattr(report_tools, "AsyncSessionLocal", _fake_session_cm)
+    monkeypatch.setattr(
+        report_tools,
+        "get_request_context",
+        lambda: SimpleNamespace(
+            latest_user_message="maybe later",
+            conversation_id=str(uuid4()),
+        ),
+    )
+
+    async def _fake_create_report(*_args, **_kwargs):
+        raise ValueError("create failed")
+
+    monkeypatch.setattr(report_tools, "create_report", _fake_create_report)
+
+    output = await report_tools.create_conversation_report.ainvoke(
+        {"title": "My report", "content": "Important summary"}
+    )
+    payload = json.loads(output)
+    assert payload["error"] == "create failed"
+    assert payload["provenance"]["tool"] == "create_conversation_report"
+    assert "confirmed" not in payload["provenance"]
