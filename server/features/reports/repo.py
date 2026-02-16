@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.db.models import ConversationReport
+from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_text
 
 from .errors import ReportNotFoundError, ReportValidationError
+
+logger = logging.getLogger(__name__)
 
 
 def _to_uuid(value: UUID | str, *, field_name: str) -> UUID:
@@ -28,10 +32,16 @@ async def create_report(
     source_conversation_id: UUID | None,
     enabled_for_agent: bool,
 ) -> ConversationReport:
+    clean_title, title_stats = sanitize_text(title, strip=False)
+    clean_preview_text, preview_stats = sanitize_text(preview_text, strip=False)
+    clean_content, content_stats = sanitize_text(content, strip=False)
+    log_sanitization_stats(logger, location="reports.create_report.title", stats=title_stats)
+    log_sanitization_stats(logger, location="reports.create_report.preview_text", stats=preview_stats)
+    log_sanitization_stats(logger, location="reports.create_report.content", stats=content_stats)
     report = ConversationReport(
-        title=title,
-        preview_text=preview_text,
-        content=content,
+        title=clean_title,
+        preview_text=clean_preview_text,
+        content=clean_content,
         source_conversation_id=source_conversation_id,
         enabled_for_agent=enabled_for_agent,
     )
@@ -53,7 +63,8 @@ async def list_reports(
     if not include_disabled:
         stmt = stmt.where(ConversationReport.enabled_for_agent.is_(True))
 
-    clean_query = q.strip()
+    clean_query, query_stats = sanitize_text(q, strip=True)
+    log_sanitization_stats(logger, location="reports.list_reports.query", stats=query_stats)
     if clean_query:
         like = f"%{clean_query}%"
         stmt = stmt.where(
@@ -99,11 +110,21 @@ async def update_report(
     enabled_for_agent: bool | None = None,
 ) -> ConversationReport:
     if title is not None:
-        report.title = title
+        clean_title, title_stats = sanitize_text(title, strip=False)
+        log_sanitization_stats(logger, location="reports.update_report.title", stats=title_stats)
+        report.title = clean_title
     if preview_text is not None:
-        report.preview_text = preview_text
+        clean_preview_text, preview_stats = sanitize_text(preview_text, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="reports.update_report.preview_text",
+            stats=preview_stats,
+        )
+        report.preview_text = clean_preview_text
     if content is not None:
-        report.content = content
+        clean_content, content_stats = sanitize_text(content, strip=False)
+        log_sanitization_stats(logger, location="reports.update_report.content", stats=content_stats)
+        report.content = clean_content
     if enabled_for_agent is not None:
         report.enabled_for_agent = enabled_for_agent
     await session.commit()

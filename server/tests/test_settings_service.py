@@ -101,6 +101,41 @@ def test_patch_model_settings_merges_defaults_when_row_absent(monkeypatch):
     assert resolved.source == "database"
 
 
+def test_patch_model_settings_sanitizes_text_fields(monkeypatch):
+    async def _fake_get_global(_session):
+        return SimpleNamespace(
+            model_name="current-model",
+            api_key="current-key",
+            base_url="https://current",
+            temperature=0.5,
+            reasoning_effort="medium",
+            reasoning_enabled=True,
+        )
+
+    captured: dict[str, object] = {}
+
+    async def _fake_upsert(_session, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(settings_service.repo, "get_global_model_settings", _fake_get_global)
+    monkeypatch.setattr(settings_service.repo, "upsert_global_model_settings", _fake_upsert)
+
+    patch = ModelSettingsPatch(
+        model_name="  open\x00-model\ud800  ",
+        api_key="sk-\x00abc\ud800\r\n",
+        base_url="https://exa\x00mple\ud800\r\npath",
+    )
+    resolved = asyncio.run(settings_service.patch_model_settings(_DummySession(), patch))
+
+    assert captured["model_name"] == "open-model\ufffd"
+    assert captured["api_key"] == "sk-abc\ufffd\n"
+    assert captured["base_url"] == "https://example\ufffd\npath"
+    assert resolved.model_name == "open-model\ufffd"
+    assert resolved.api_key == "sk-abc\ufffd\n"
+    assert resolved.base_url == "https://example\ufffd\npath"
+
+
 def test_to_model_settings_response_masks_api_key():
     resolved = ModelSettingsResolved(
         model_name="gpt-4.1-mini",
@@ -152,6 +187,37 @@ def test_patch_company_profile_trims_and_merges_defaults_when_row_absent(monkeyp
     assert captured["description"] == "B2B analytics"
     assert captured["enabled"] is False
     assert resolved.source == "database"
+
+
+def test_patch_company_profile_sanitizes_text_fields(monkeypatch):
+    async def _fake_get_global(_session):
+        return SimpleNamespace(
+            name="Current Co",
+            description="Current desc",
+            enabled=False,
+        )
+
+    captured: dict[str, object] = {}
+
+    async def _fake_upsert(_session, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(settings_service.repo, "get_global_company_profile", _fake_get_global)
+    monkeypatch.setattr(settings_service.repo, "upsert_global_company_profile", _fake_upsert)
+
+    patch = CompanyProfilePatch(
+        name="  Ac\x00me  ",
+        description="  Line 1\x00\r\nLine 2  ",
+        enabled=True,
+    )
+    resolved = asyncio.run(settings_service.patch_company_profile(_DummySession(), patch))
+
+    assert captured["name"] == "Acme"
+    assert captured["description"] == "Line 1\nLine 2"
+    assert resolved.name == "Acme"
+    assert resolved.description == "Line 1\nLine 2"
+    assert resolved.enabled is True
 
 
 def test_patch_company_profile_noop_returns_current(monkeypatch):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Sequence
 from uuid import UUID
@@ -11,11 +12,15 @@ from sqlalchemy.orm import selectinload
 from server.db.models import Attachment, Conversation, Message, MessageAttachment
 from server.features.attachments.schemas import StoredAttachment
 from server.features.attachments.service import list_legacy_metadata_attachments
+from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_optional_text
 
 from .constants import DEFAULT_TOKENIZER_NAME
 from .errors import AttachmentNotFoundError, ConversationNotFoundError
+from .sanitize import sanitize_message_content, sanitize_message_suffix
 from .tokens import estimate_tokens
 from .types import ConversationListCursor, ConversationListEntry
+
+logger = logging.getLogger(__name__)
 
 
 def to_uuid(value: UUID | str) -> UUID:
@@ -36,7 +41,9 @@ async def create_conversation(
     *,
     title: str | None = None,
 ) -> Conversation:
-    conversation = Conversation(title=title)
+    clean_title, title_stats = sanitize_optional_text(title, strip=True)
+    log_sanitization_stats(logger, location="chat.create_conversation.title", stats=title_stats)
+    conversation = Conversation(title=clean_title)
     session.add(conversation)
     await session.commit()
     await session.refresh(conversation)
@@ -50,7 +57,9 @@ async def rename_conversation(
     title: str | None,
 ) -> Conversation:
     conversation = await ensure_conversation(session, conversation_id)
-    conversation.title = title
+    clean_title, title_stats = sanitize_optional_text(title, strip=True)
+    log_sanitization_stats(logger, location="chat.rename_conversation.title", stats=title_stats)
+    conversation.title = clean_title
     conversation.updated_at = datetime.now(timezone.utc)
     await session.commit()
     await session.refresh(conversation)
@@ -87,6 +96,18 @@ async def save_uploaded_attachments(
 ) -> list[Attachment]:
     saved: list[Attachment] = []
     for uploaded in uploaded_files:
+        preview_text, preview_stats = sanitize_optional_text(uploaded.preview_text, strip=False)
+        extraction_note, note_stats = sanitize_optional_text(uploaded.extraction_note, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="chat.save_uploaded_attachments.preview_text",
+            stats=preview_stats,
+        )
+        log_sanitization_stats(
+            logger,
+            location="chat.save_uploaded_attachments.extraction_note",
+            stats=note_stats,
+        )
         attachment = Attachment(
             id=to_uuid(uploaded.id),
             filename=uploaded.filename,
@@ -94,8 +115,8 @@ async def save_uploaded_attachments(
             media_type=uploaded.media_type,
             size_bytes=uploaded.size_bytes,
             storage_path=uploaded.storage_path,
-            preview_text=uploaded.preview_text,
-            extraction_note=uploaded.extraction_note,
+            preview_text=preview_text,
+            extraction_note=extraction_note,
             created_at=uploaded.created_at,
         )
         session.add(attachment)
@@ -126,6 +147,18 @@ async def backfill_attachments_from_legacy_json(session: AsyncSession) -> int:
         attachment_id = to_uuid(item.id)
         if attachment_id in existing:
             continue
+        preview_text, preview_stats = sanitize_optional_text(item.preview_text, strip=False)
+        extraction_note, note_stats = sanitize_optional_text(item.extraction_note, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="chat.backfill_attachments.preview_text",
+            stats=preview_stats,
+        )
+        log_sanitization_stats(
+            logger,
+            location="chat.backfill_attachments.extraction_note",
+            stats=note_stats,
+        )
         session.add(
             Attachment(
                 id=attachment_id,
@@ -134,8 +167,8 @@ async def backfill_attachments_from_legacy_json(session: AsyncSession) -> int:
                 media_type=item.media_type,
                 size_bytes=item.size_bytes,
                 storage_path=item.storage_path,
-                preview_text=item.preview_text,
-                extraction_note=item.extraction_note,
+                preview_text=preview_text,
+                extraction_note=extraction_note,
                 created_at=item.created_at,
             )
         )
@@ -157,7 +190,11 @@ async def save_user_message_with_attachments(
     message_kind: str = "normal",
 ) -> Message:
     conversation = await ensure_conversation(session, conversation_id)
-    clean_content = content.strip()
+    clean_content = sanitize_message_content(
+        content,
+        strip=True,
+        location="chat.save_user_message_with_attachments.content",
+    )
 
     message = Message(
         conversation_id=conversation.id,
@@ -215,7 +252,11 @@ async def save_assistant_message(
     reasoning_tokens: int | None = None,
 ) -> Message:
     conversation = await ensure_conversation(session, conversation_id)
-    clean_content = content if message_kind == "reasoning" else content.strip()
+    clean_content = sanitize_message_content(
+        content,
+        strip=message_kind != "reasoning",
+        location=f"chat.save_assistant_message.content.{message_kind}",
+    )
     message = Message(
         conversation_id=conversation.id,
         role="assistant",
@@ -243,7 +284,10 @@ async def append_message_content(
     if message is None:
         raise ValueError(f"Message '{message_id}' was not found.")
 
-    message.content = f"{message.content}{content_suffix}"
+    message.content = (
+        f"{message.content}"
+        f"{sanitize_message_suffix(content_suffix, location='chat.append_message_content.content_suffix')}"
+    )
     await session.commit()
     await session.refresh(message)
     return message
@@ -261,7 +305,11 @@ async def save_assistant_message_with_attachments(
     usage_json: dict[str, Any] | None = None,
 ) -> Message:
     conversation = await ensure_conversation(session, conversation_id)
-    clean_content = content.strip()
+    clean_content = sanitize_message_content(
+        content,
+        strip=True,
+        location="chat.save_assistant_message_with_attachments.content",
+    )
     message = Message(
         conversation_id=conversation.id,
         role="assistant",

@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from server.features.agent.sandbox import python_sandbox_tool as sandbox_tool
+from server.features.agent.sandbox.dataframe_bootstrap import (
+    SANDBOX_DATAFRAME_BOOTSTRAP_MARKER,
+)
 from server.features.agent.sandbox.sandbox_schema import (
     SandboxExecutionResult,
     SandboxInputFileMapping,
@@ -19,6 +22,12 @@ async def _fake_session_cm():
     yield object()
 
 
+def _assert_bootstrap_prepended(composed_code: str, user_code: str) -> None:
+    assert SANDBOX_DATAFRAME_BOOTSTRAP_MARKER in composed_code
+    assert composed_code.endswith(user_code)
+    assert composed_code.index(SANDBOX_DATAFRAME_BOOTSTRAP_MARKER) < composed_code.index(user_code)
+
+
 def test_python_sandbox_tool_exposes_no_file_selector_args():
     args = sandbox_tool.run_python_code.args
     assert "input_filenames" not in args
@@ -27,6 +36,13 @@ def test_python_sandbox_tool_exposes_no_file_selector_args():
     assert sandbox_tool.run_python_code.name == "run_python_code"
     assert "input_filenames" not in sandbox_tool.run_python_code.description
     assert "attachment_ids" not in sandbox_tool.run_python_code.description
+    assert "load_dataframe(path, **kwargs)" in sandbox_tool.run_python_code.description
+
+
+def test_compose_sandbox_code_prepends_dataframe_bootstrap():
+    user_code = "print('hello')"
+    composed = sandbox_tool._compose_sandbox_code(user_code)
+    _assert_bootstrap_prepended(composed, user_code)
 
 
 @pytest.mark.asyncio
@@ -44,6 +60,7 @@ async def test_python_sandbox_tool_allows_no_explicit_intent_and_no_attachments(
         if on_status is not None:
             await on_status("executing", "Running sandbox")
         assert request.files == []
+        _assert_bootstrap_prepended(request.code, "print('hello')")
         return SandboxExecutionResult(
             run_id=request.run_id,
             status="succeeded",
@@ -300,6 +317,7 @@ async def test_python_sandbox_tool_uses_persistent_session_when_conversation_con
         _ = session
         assert conversation_id == "conv-1"
         assert request.files == []
+        _assert_bootstrap_prepended(request.code, "print('hello')")
         if on_status is not None:
             await on_status("executing", "Running sandbox")
         return SandboxExecutionResult(

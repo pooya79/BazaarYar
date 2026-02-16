@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
+from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_text
 
 from . import repo
 from .types import (
@@ -16,6 +18,8 @@ from .types import (
     ModelSettingsResponse,
     ReasoningEffort,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def default_model_settings_from_env() -> ModelSettingsResolved:
@@ -111,12 +115,46 @@ async def patch_model_settings(
         return current
 
     if "model_name" in patch_data:
-        candidate_model_name = str(patch_data["model_name"] or "").strip()
+        candidate_model_name, name_stats = sanitize_text(
+            str(patch_data["model_name"] or ""),
+            strip=True,
+        )
+        log_sanitization_stats(
+            logger,
+            location="settings.patch_model_settings.model_name",
+            stats=name_stats,
+        )
         model_name = candidate_model_name or current.model_name
     else:
         model_name = current.model_name
-    api_key = patch_data.get("api_key", current.api_key)
-    base_url = patch_data.get("base_url", current.base_url)
+    model_name, normalized_name_stats = sanitize_text(model_name, strip=True)
+    log_sanitization_stats(
+        logger,
+        location="settings.patch_model_settings.model_name.normalized",
+        stats=normalized_name_stats,
+    )
+    if not model_name:
+        model_name = current.model_name
+    api_key_raw = patch_data.get("api_key", current.api_key)
+    base_url_raw = patch_data.get("base_url", current.base_url)
+    if isinstance(api_key_raw, str):
+        api_key, api_key_stats = sanitize_text(api_key_raw, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="settings.patch_model_settings.api_key",
+            stats=api_key_stats,
+        )
+    else:
+        api_key = api_key_raw
+    if isinstance(base_url_raw, str):
+        base_url, base_url_stats = sanitize_text(base_url_raw, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="settings.patch_model_settings.base_url",
+            stats=base_url_stats,
+        )
+    else:
+        base_url = base_url_raw
     temperature = float(patch_data.get("temperature", current.temperature))
     reasoning_effort = cast(
         ReasoningEffort,
@@ -158,14 +196,39 @@ async def patch_company_profile(
         return current
 
     if "name" in patch_data:
-        name = str(patch_data["name"] or "").strip()
+        name, name_stats = sanitize_text(str(patch_data["name"] or ""), strip=True)
+        log_sanitization_stats(
+            logger,
+            location="settings.patch_company_profile.name",
+            stats=name_stats,
+        )
     else:
         name = current.name
+    name, normalized_name_stats = sanitize_text(name, strip=True)
+    log_sanitization_stats(
+        logger,
+        location="settings.patch_company_profile.name.normalized",
+        stats=normalized_name_stats,
+    )
 
     if "description" in patch_data:
-        description = str(patch_data["description"] or "").strip()
+        description, description_stats = sanitize_text(
+            str(patch_data["description"] or ""),
+            strip=True,
+        )
+        log_sanitization_stats(
+            logger,
+            location="settings.patch_company_profile.description",
+            stats=description_stats,
+        )
     else:
         description = current.description
+    description, normalized_description_stats = sanitize_text(description, strip=True)
+    log_sanitization_stats(
+        logger,
+        location="settings.patch_company_profile.description.normalized",
+        stats=normalized_description_stats,
+    )
 
     enabled = bool(patch_data.get("enabled", current.enabled))
     row = await repo.upsert_global_company_profile(

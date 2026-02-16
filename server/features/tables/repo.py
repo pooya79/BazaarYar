@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -15,10 +16,13 @@ from server.db.models import (
     ReferenceTableImportJob,
     ReferenceTableRow,
 )
+from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_optional_text
 
 from .errors import ImportJobNotFoundError, QueryValidationError, RowValidationError, TableNotFoundError
 from .query_engine import compile_query, merge_where_clauses
 from .types import ImportFormat, ImportStatus, RowsBatchInput, RowsQueryInput
+
+logger = logging.getLogger(__name__)
 
 
 def _to_uuid(value: UUID | str, *, field_name: str) -> UUID:
@@ -81,15 +85,41 @@ async def create_table_with_columns(
     description: str | None,
     columns: list[dict[str, Any]],
 ) -> ReferenceTable:
+    clean_title, title_stats = sanitize_optional_text(title, strip=False)
+    clean_description, description_stats = sanitize_optional_text(description, strip=False)
+    log_sanitization_stats(logger, location="tables.repo.create_table.title", stats=title_stats)
+    log_sanitization_stats(
+        logger,
+        location="tables.repo.create_table.description",
+        stats=description_stats,
+    )
     table = ReferenceTable(
         name=name,
-        title=title,
-        description=description,
+        title=clean_title,
+        description=clean_description,
     )
     session.add(table)
     await session.flush()
 
     for position, column in enumerate(columns):
+        clean_column_description, column_description_stats = sanitize_optional_text(
+            column.get("description"),
+            strip=False,
+        )
+        clean_column_semantic_hint, semantic_hint_stats = sanitize_optional_text(
+            column.get("semantic_hint"),
+            strip=False,
+        )
+        log_sanitization_stats(
+            logger,
+            location=f"tables.repo.create_table.columns.description.{column['name']}",
+            stats=column_description_stats,
+        )
+        log_sanitization_stats(
+            logger,
+            location=f"tables.repo.create_table.columns.semantic_hint.{column['name']}",
+            stats=semantic_hint_stats,
+        )
         session.add(
             ReferenceTableColumn(
                 table_id=table.id,
@@ -97,8 +127,8 @@ async def create_table_with_columns(
                 position=position,
                 data_type=column["data_type"],
                 nullable=column["nullable"],
-                description=column.get("description"),
-                semantic_hint=column.get("semantic_hint"),
+                description=clean_column_description,
+                semantic_hint=clean_column_semantic_hint,
                 constraints_json=column.get("constraints_json"),
                 default_json=column.get("default_value"),
             )
@@ -120,6 +150,24 @@ async def replace_columns(
     await session.flush()
 
     for position, column in enumerate(columns):
+        clean_column_description, column_description_stats = sanitize_optional_text(
+            column.get("description"),
+            strip=False,
+        )
+        clean_column_semantic_hint, semantic_hint_stats = sanitize_optional_text(
+            column.get("semantic_hint"),
+            strip=False,
+        )
+        log_sanitization_stats(
+            logger,
+            location=f"tables.repo.replace_columns.description.{column['name']}",
+            stats=column_description_stats,
+        )
+        log_sanitization_stats(
+            logger,
+            location=f"tables.repo.replace_columns.semantic_hint.{column['name']}",
+            stats=semantic_hint_stats,
+        )
         session.add(
             ReferenceTableColumn(
                 table_id=table.id,
@@ -127,8 +175,8 @@ async def replace_columns(
                 position=position,
                 data_type=column["data_type"],
                 nullable=column["nullable"],
-                description=column.get("description"),
-                semantic_hint=column.get("semantic_hint"),
+                description=clean_column_description,
+                semantic_hint=clean_column_semantic_hint,
                 constraints_json=column.get("constraints_json"),
                 default_json=column.get("default_value"),
             )
@@ -145,8 +193,20 @@ async def update_table_metadata(
     title: str | None,
     description: str | None,
 ) -> ReferenceTable:
-    table.title = title
-    table.description = description
+    clean_title, title_stats = sanitize_optional_text(title, strip=False)
+    clean_description, description_stats = sanitize_optional_text(description, strip=False)
+    log_sanitization_stats(
+        logger,
+        location="tables.repo.update_table_metadata.title",
+        stats=title_stats,
+    )
+    log_sanitization_stats(
+        logger,
+        location="tables.repo.update_table_metadata.description",
+        stats=description_stats,
+    )
+    table.title = clean_title
+    table.description = clean_description
     await session.commit()
     return await get_table(session, table_id=table.id, with_columns=True)
 
@@ -263,6 +323,12 @@ async def batch_mutate_rows(
                 )
 
         if row is None:
+            clean_source_ref, source_ref_stats = sanitize_optional_text(upsert.source_ref, strip=False)
+            log_sanitization_stats(
+                logger,
+                location="tables.repo.batch_mutate_rows.insert.source_ref",
+                stats=source_ref_stats,
+            )
             session.add(
                 ReferenceTableRow(
                     id=row_uuid,
@@ -270,19 +336,25 @@ async def batch_mutate_rows(
                     import_job_id=import_job_id,
                     values_json=upsert.values_json,
                     source_actor=upsert.source_actor.value,
-                    source_ref=upsert.source_ref,
-                    created_by=upsert.source_ref,
-                    updated_by=upsert.source_ref,
+                    source_ref=clean_source_ref,
+                    created_by=clean_source_ref,
+                    updated_by=clean_source_ref,
                 )
             )
             inserted += 1
             continue
 
+        clean_source_ref, source_ref_stats = sanitize_optional_text(upsert.source_ref, strip=False)
+        log_sanitization_stats(
+            logger,
+            location="tables.repo.batch_mutate_rows.update.source_ref",
+            stats=source_ref_stats,
+        )
         row.values_json = upsert.values_json
         row.version += 1
         row.source_actor = upsert.source_actor.value
-        row.source_ref = upsert.source_ref
-        row.updated_by = upsert.source_ref
+        row.source_ref = clean_source_ref
+        row.updated_by = clean_source_ref
         if import_job_id is not None:
             row.import_job_id = import_job_id
         updated += 1
@@ -330,13 +402,28 @@ async def create_import_job(
     source_format: ImportFormat | None,
     created_by: str | None,
 ) -> ReferenceTableImportJob:
+    clean_source_filename, source_filename_stats = sanitize_optional_text(
+        source_filename,
+        strip=False,
+    )
+    clean_created_by, created_by_stats = sanitize_optional_text(created_by, strip=False)
+    log_sanitization_stats(
+        logger,
+        location="tables.repo.create_import_job.source_filename",
+        stats=source_filename_stats,
+    )
+    log_sanitization_stats(
+        logger,
+        location="tables.repo.create_import_job.created_by",
+        stats=created_by_stats,
+    )
     job = ReferenceTableImportJob(
         table_id=table_id,
         attachment_id=attachment_id,
         status=ImportStatus.PENDING.value,
-        source_filename=source_filename,
+        source_filename=clean_source_filename,
         source_format=source_format.value if source_format else None,
-        created_by=created_by,
+        created_by=clean_created_by,
         errors_json=[],
     )
     session.add(job)

@@ -27,6 +27,7 @@ from .repo import (
     set_conversation_starred,
     to_uuid,
 )
+from .sanitize import sanitize_message_content
 from .selection import model_relevant_messages, pick_messages_for_budget
 from .tokens import estimate_tokens
 from .types import ConversationListCursor, ConversationListEntry
@@ -91,7 +92,11 @@ async def summarize_and_archive_old_messages(
     else:
         summary_text = summary_result
 
-    summary_text = summary_text.strip()
+    summary_text = sanitize_message_content(
+        summary_text,
+        strip=True,
+        location="chat.summarize_and_archive_old_messages.summary_text",
+    )
     if not summary_text:
         return None
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.db.models import ConversationReport
+from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_text
 
 from . import repo
 from .errors import ReportValidationError
@@ -13,6 +15,7 @@ from .types import ReportDetail, ReportSummary
 _MAX_TITLE_LENGTH = 255
 _MAX_PREVIEW_LENGTH = 180
 _MAX_CONTENT_LENGTH = 20_000
+logger = logging.getLogger(__name__)
 
 
 def _collapse_whitespace(value: str) -> str:
@@ -32,7 +35,8 @@ def _validate_required_text(
     field_name: str,
     max_length: int,
 ) -> str:
-    normalized = (value or "").strip()
+    normalized, stats = sanitize_text(value or "", strip=True)
+    log_sanitization_stats(logger, location=f"reports.validate_required_text.{field_name}", stats=stats)
     if not normalized:
         raise ReportValidationError(f"{field_name} cannot be empty.")
     if len(normalized) > max_length:
@@ -47,7 +51,8 @@ def _validate_optional_preview(
 ) -> str:
     if value is None:
         return _derive_preview(fallback_content)
-    normalized = value.strip()
+    normalized, stats = sanitize_text(value, strip=True)
+    log_sanitization_stats(logger, location="reports.validate_optional_preview.preview_text", stats=stats)
     if not normalized:
         return _derive_preview(fallback_content)
     if len(normalized) > _MAX_PREVIEW_LENGTH:

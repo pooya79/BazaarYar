@@ -10,7 +10,12 @@ from server.features.tables.importers import ParsedImportData
 from server.features.tables.types import (
     ImportFormat,
     ImportStartInput,
+    ReferenceTableCreateInput,
+    ReferenceTableColumnInput,
+    RowsBatchInput,
     RowsBatchResult,
+    RowUpsert,
+    SourceActor,
     TableDataType,
 )
 
@@ -19,6 +24,141 @@ tables_service = importlib.import_module("server.features.tables.service")
 
 class _DummySession:
     pass
+
+
+def test_create_table_sanitizes_metadata_and_column_text(monkeypatch):
+    settings = SimpleNamespace(
+        tables_max_columns=150,
+        tables_max_cell_length=4_000,
+    )
+    monkeypatch.setattr(tables_service, "get_settings", lambda: settings)
+
+    async def _get_table_by_name(_session, *, name, with_columns=False):
+        _ = (name, with_columns)
+        return None
+
+    captured: dict[str, object] = {}
+
+    async def _create_table_with_columns(_session, *, name, title, description, columns):
+        captured["name"] = name
+        captured["title"] = title
+        captured["description"] = description
+        captured["columns"] = columns
+        now = datetime.now(timezone.utc)
+        return SimpleNamespace(
+            id=uuid4(),
+            name=name,
+            title=title,
+            description=description,
+            row_count=0,
+            created_at=now,
+            updated_at=now,
+            columns=[
+                SimpleNamespace(
+                    id=uuid4(),
+                    name=item["name"],
+                    position=index,
+                    data_type=item["data_type"],
+                    nullable=item["nullable"],
+                    description=item.get("description"),
+                    semantic_hint=item.get("semantic_hint"),
+                    constraints_json=item.get("constraints_json"),
+                    default_json=item.get("default_value"),
+                )
+                for index, item in enumerate(columns)
+            ],
+        )
+
+    monkeypatch.setattr(tables_service.repo, "get_table_by_name", _get_table_by_name)
+    monkeypatch.setattr(tables_service.repo, "create_table_with_columns", _create_table_with_columns)
+
+    result = asyncio.run(
+        tables_service.create_table(
+            _DummySession(),
+            payload=ReferenceTableCreateInput(
+                name="campaign_metrics",
+                title="Title\x00\r\nA",
+                description="Desc\x00\rB",
+                columns=[
+                    ReferenceTableColumnInput(
+                        name="campaign",
+                        data_type=TableDataType.TEXT,
+                        nullable=False,
+                        description="Col\x00\r\nDesc",
+                        semantic_hint="Hint\x00\r\n",
+                    )
+                ],
+            ),
+        )
+    )
+
+    assert captured["title"] == "Title\nA"
+    assert captured["description"] == "Desc\nB"
+    columns = captured["columns"]
+    assert isinstance(columns, list)
+    assert columns[0]["description"] == "Col\nDesc"
+    assert columns[0]["semantic_hint"] == "Hint\n"
+    assert result.title == "Title\nA"
+    assert result.description == "Desc\nB"
+    assert result.columns[0].description == "Col\nDesc"
+    assert result.columns[0].semantic_hint == "Hint\n"
+
+
+def test_mutate_rows_sanitizes_source_ref(monkeypatch):
+    settings = SimpleNamespace(
+        tables_max_cell_length=4_000,
+    )
+    monkeypatch.setattr(tables_service, "get_settings", lambda: settings)
+
+    table = SimpleNamespace(
+        id=uuid4(),
+        columns=[
+            SimpleNamespace(
+                name="campaign",
+                data_type=TableDataType.TEXT.value,
+                nullable=False,
+                description=None,
+                semantic_hint=None,
+                constraints_json=None,
+                default_json=None,
+            )
+        ],
+    )
+
+    async def _get_table(_session, *, table_id, with_columns=True):
+        _ = (table_id, with_columns)
+        return table
+
+    captured: dict[str, object] = {}
+
+    async def _batch_mutate_rows(_session, *, table, payload, import_job_id=None):
+        _ = (table, import_job_id)
+        captured["payload"] = payload
+        return (1, 0, 0)
+
+    monkeypatch.setattr(tables_service.repo, "get_table", _get_table)
+    monkeypatch.setattr(tables_service.repo, "batch_mutate_rows", _batch_mutate_rows)
+
+    result = asyncio.run(
+        tables_service.mutate_rows(
+            _DummySession(),
+            table_id=str(uuid4()),
+            payload=RowsBatchInput(
+                upserts=[
+                    RowUpsert(
+                        values_json={"campaign": "Spring"},
+                        source_actor=SourceActor.USER,
+                        source_ref="src\x00\r\nref",
+                    )
+                ],
+                delete_row_ids=[],
+            ),
+        )
+    )
+
+    assert result.inserted == 1
+    payload = captured["payload"]
+    assert payload.upserts[0].source_ref == "src\nref"
 
 
 def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
@@ -59,7 +199,7 @@ def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
     )
     attachment = SimpleNamespace(
         id=attachment_id,
-        filename="campaign-report.csv",
+        filename="campaign\x00-report\ud800.csv\r\n",
         size_bytes=100,
         storage_path="unused",
     )
@@ -91,8 +231,10 @@ def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
         _ = attachment_id
         return attachment
 
+    captured_import_job: dict[str, object] = {}
+
     async def _create_import_job(_session, **kwargs):
-        _ = kwargs
+        captured_import_job.update(kwargs)
         return job
 
     async def _mark_running(_session, *, job):
@@ -181,6 +323,7 @@ def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
                 source_format=ImportFormat.CSV,
                 has_header=True,
             ),
+            created_by="import\x00-user\ud800\r\n",
         )
     )
 
@@ -196,6 +339,8 @@ def test_start_import_returns_enriched_metadata_and_partial_counts(monkeypatch):
         "impressions": "Impressions",
     }
     assert response["inferred_columns"][0]["source_name"] == "Campaign"
+    assert captured_import_job["source_filename"] == "campaign-report\ufffd.csv\n"
+    assert captured_import_job["created_by"] == "import-user\ufffd\n"
 
 
 def test_infer_columns_from_file_returns_typed_suggestions(monkeypatch):

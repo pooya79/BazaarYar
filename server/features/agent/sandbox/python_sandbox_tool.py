@@ -13,6 +13,7 @@ from server.features.attachments import (
     store_generated_artifact,
 )
 from server.features.agent.sandbox.event_bus import emit_sandbox_status, get_request_context
+from server.features.agent.sandbox.dataframe_bootstrap import SANDBOX_DATAFRAME_BOOTSTRAP_CODE
 from server.features.agent.sandbox.session_executor import execute_persistent_sandbox
 from server.features.agent.sandbox.sandbox_executor import execute_sandbox
 from server.features.agent.sandbox.sandbox_schema import SandboxExecutionRequest, SandboxInputFile
@@ -50,6 +51,10 @@ def _failed_payload(summary: str, *, run_id: str | None = None) -> dict[str, Any
     if run_id:
         payload["run_id"] = run_id
     return payload
+
+
+def _compose_sandbox_code(code: str) -> str:
+    return f"{SANDBOX_DATAFRAME_BOOTSTRAP_CODE}\n\n{code}"
 
 
 async def _conversation_attachment_ids(session: Any, *, conversation_id: str) -> list[str]:
@@ -135,9 +140,10 @@ async def run_python_code(
                 attachment_ids,
                 allow_json_fallback=False,
             )
+            sandbox_code = _compose_sandbox_code(code)
             sandbox_request = SandboxExecutionRequest(
                 run_id=run_id,
-                code=code,
+                code=sandbox_code,
                 files=[
                     SandboxInputFile(
                         attachment_id=item.id,

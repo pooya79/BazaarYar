@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -11,6 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
 from server.db.models import ReferenceTable, ReferenceTableImportJob
+from server.features.shared.text_sanitize import (
+    log_sanitization_stats,
+    sanitize_optional_text,
+    sanitize_text,
+)
 
 from . import importers, repo, schema
 from .errors import ImportFormatError, QueryValidationError, RowValidationError
@@ -41,6 +47,34 @@ from .types import (
 
 # Compatibility alias for older callers/tests that patch `repository.*`.
 repository = repo
+logger = logging.getLogger(__name__)
+
+
+def _sanitize_table_text(
+    value: str | None,
+    *,
+    location: str,
+) -> str | None:
+    cleaned, stats = sanitize_optional_text(value, strip=False)
+    log_sanitization_stats(logger, location=location, stats=stats)
+    return cleaned
+
+
+def _sanitize_column_input(column: ReferenceTableColumnInput) -> ReferenceTableColumnInput:
+    description = _sanitize_table_text(
+        column.description,
+        location=f"tables.column.description.{column.name}",
+    )
+    semantic_hint = _sanitize_table_text(
+        column.semantic_hint,
+        location=f"tables.column.semantic_hint.{column.name}",
+    )
+    return column.model_copy(
+        update={
+            "description": description,
+            "semantic_hint": semantic_hint,
+        }
+    )
 
 
 def _table_column_to_input(column) -> ReferenceTableColumnInput:
@@ -128,13 +162,19 @@ async def create_table(
         max_columns=settings.tables_max_columns,
         max_cell_length=settings.tables_max_cell_length,
     )
+    sanitized_columns = [_sanitize_column_input(column) for column in normalized_columns]
+    sanitized_title = _sanitize_table_text(payload.title, location="tables.create_table.title")
+    sanitized_description = _sanitize_table_text(
+        payload.description,
+        location="tables.create_table.description",
+    )
 
     table = await repo.create_table_with_columns(
         session,
         name=table_name,
-        title=payload.title,
-        description=payload.description,
-        columns=[column.model_dump(mode="json") for column in normalized_columns],
+        title=sanitized_title,
+        description=sanitized_description,
+        columns=[column.model_dump(mode="json") for column in sanitized_columns],
     )
     return _table_to_detail(table)
 
@@ -167,14 +207,17 @@ async def update_table(
             max_columns=settings.tables_max_columns,
             max_cell_length=settings.tables_max_cell_length,
         )
+        sanitized_columns = [_sanitize_column_input(column) for column in next_columns]
         table = await repo.replace_columns(
             session,
             table=table,
-            columns=[column.model_dump(mode="json") for column in next_columns],
+            columns=[column.model_dump(mode="json") for column in sanitized_columns],
         )
 
     title = payload.title if payload.title is not None else table.title
     description = payload.description if payload.description is not None else table.description
+    title = _sanitize_table_text(title, location="tables.update_table.title")
+    description = _sanitize_table_text(description, location="tables.update_table.description")
     table = await repo.update_table_metadata(
         session,
         table=table,
@@ -249,12 +292,21 @@ async def mutate_rows(
             columns=schema_columns,
             max_cell_length=settings.tables_max_cell_length,
         )
+        clean_source_ref, source_ref_stats = sanitize_optional_text(
+            row.source_ref,
+            strip=False,
+        )
+        log_sanitization_stats(
+            logger,
+            location="tables.mutate_rows.source_ref",
+            stats=source_ref_stats,
+        )
         normalized_upserts.append(
             RowUpsert(
                 row_id=row.row_id,
                 values_json=normalized_values,
                 source_actor=row.source_actor,
-                source_ref=row.source_ref,
+                source_ref=clean_source_ref,
             )
         )
 
@@ -345,13 +397,28 @@ async def start_import(
             f"Attachment exceeds max size of {settings.tables_max_file_size_bytes} bytes."
         )
 
+    clean_source_filename, source_filename_stats = sanitize_optional_text(
+        attachment.filename,
+        strip=False,
+    )
+    log_sanitization_stats(
+        logger,
+        location="tables.start_import.source_filename",
+        stats=source_filename_stats,
+    )
+    clean_created_by, created_by_stats = sanitize_optional_text(created_by, strip=False)
+    log_sanitization_stats(
+        logger,
+        location="tables.start_import.created_by",
+        stats=created_by_stats,
+    )
     job = await repo.create_import_job(
         session,
         table_id=table.id,
         attachment_id=attachment_id,
-        source_filename=attachment.filename,
+        source_filename=clean_source_filename,
         source_format=payload.source_format,
-        created_by=created_by,
+        created_by=clean_created_by,
     )
     job = await repo.mark_import_job_running(session, job=job)
 
