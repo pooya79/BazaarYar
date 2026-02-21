@@ -1,5 +1,4 @@
 import {
-  Mic,
   Paperclip,
   SendHorizontal,
   SlidersHorizontal,
@@ -33,8 +32,6 @@ type ChatInputProps = {
   attachments: PendingAttachment[];
   onPickFiles: (files: FileList) => void;
   onRemoveAttachment: (attachmentId: string) => void;
-  brandVoice: string;
-  onToggleBrandVoice: () => void;
   onOpenToolSettings: () => void;
   toolSettingsBusy: boolean;
 };
@@ -57,8 +54,6 @@ export function ChatInput({
   attachments,
   onPickFiles,
   onRemoveAttachment,
-  brandVoice,
-  onToggleBrandVoice,
   onOpenToolSettings,
   toolSettingsBusy,
 }: ChatInputProps) {
@@ -160,15 +155,6 @@ export function ChatInput({
             >
               <SlidersHorizontal className={iconClass} aria-hidden="true" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-md text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-text-primary"
-              type="button"
-              title="Voice"
-            >
-              <Mic className={iconClass} aria-hidden="true" />
-            </Button>
             {isStreaming ? (
               <Button
                 variant="ghost"
@@ -197,23 +183,8 @@ export function ChatInput({
             )}
           </div>
         </div>
-        <div className="mt-3 flex flex-col items-start gap-2 px-1 text-[0.7rem] text-marketing-text-muted md:flex-row md:items-center md:justify-between">
+        <div className="mt-3 px-1 text-[0.7rem] text-marketing-text-muted">
           <span>AI can make mistakes. Verify important data.</span>
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto rounded-md border border-marketing-border bg-secondary px-2.5 py-1 text-[0.7rem] font-semibold text-marketing-text-secondary hover:border-input hover:bg-secondary hover:text-marketing-text-primary"
-            onClick={onToggleBrandVoice}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-marketing-primary"
-              aria-hidden="true"
-            />
-            <span>{brandVoice}</span>
-            <span className="text-xs leading-none" aria-hidden="true">
-              v
-            </span>
-          </Button>
         </div>
       </div>
     </div>

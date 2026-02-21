@@ -90,5 +90,3 @@ export const botResponses = [
   "Excellent idea! For this email sequence, I suggest a 5-touch nurture campaign. Subject line A/B tests show 'Unlock your' performs better. Here's the flow...",
   "Strategic thinking! For this campaign, let's segment your audience into three buckets: Awareness, Consideration, and Decision. Here's the content matrix...",
 ];
-
-export const brandVoices = ["Professional", "Bold", "Luxury", "Casual"];

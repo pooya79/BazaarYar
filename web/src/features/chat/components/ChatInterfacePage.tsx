@@ -15,7 +15,7 @@ import {
   useComposerAttachments,
 } from "@/features/chat/hooks/useComposerAttachments";
 import { useToolSettings } from "@/features/chat/hooks/useToolSettings";
-import { brandVoices, quickActions } from "@/features/chat/model/constants";
+import { quickActions } from "@/features/chat/model/constants";
 import type { AssistantTurn } from "@/features/chat/model/types";
 import { formatTime } from "@/features/chat/utils/chatViewUtils";
 
@@ -32,7 +32,6 @@ export function ChatInterfacePage() {
     handleRemoveAttachment,
     clearPendingAttachments,
   } = useComposerAttachments();
-  const [brandVoiceIndex, setBrandVoiceIndex] = useState(0);
   const [toolModalOpen, setToolModalOpen] = useState(false);
 
   const messageId = useRef(0);
@@ -195,10 +194,6 @@ export function ChatInterfacePage() {
     }
   };
 
-  const toggleBrandVoice = () => {
-    setBrandVoiceIndex((prev) => (prev + 1) % brandVoices.length);
-  };
-
   const hasMessages = timeline.length > 0;
   const hasReadyAttachment = pendingAttachments.some(
     (item) => item.status === "ready",
@@ -246,8 +241,6 @@ export function ChatInterfacePage() {
         attachments={pendingAttachments}
         onPickFiles={handlePickFiles}
         onRemoveAttachment={handleRemoveAttachment}
-        brandVoice={brandVoices[brandVoiceIndex]}
-        onToggleBrandVoice={toggleBrandVoice}
         onOpenToolSettings={() => setToolModalOpen(true)}
         toolSettingsBusy={isToolSettingsLoading}
       />
