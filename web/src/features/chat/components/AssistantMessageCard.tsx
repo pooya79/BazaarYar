@@ -2,6 +2,7 @@ import { Wrench } from "lucide-react";
 import type { AssistantTurn, ToolCallEntry } from "@/features/chat/model/types";
 import { cn } from "@/shared/lib/utils";
 import { Card, CardContent, CardFooter } from "@/shared/ui/card";
+import { AssistantMarkdown } from "./AssistantMarkdown";
 import { MessageAttachments } from "./MessageAttachments";
 
 type AssistantMessageCardProps = {
@@ -133,8 +134,8 @@ export function AssistantMessageCard({
         {turn.blocks.map((block) => {
           if (block.type === "text") {
             return (
-              <div key={block.id} className="whitespace-pre-line">
-                {block.content}
+              <div key={block.id}>
+                <AssistantMarkdown content={block.content} />
               </div>
             );
           }
