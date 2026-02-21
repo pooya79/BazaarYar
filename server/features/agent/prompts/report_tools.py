@@ -10,5 +10,6 @@ Only enabled reports are accessible.
 
 CREATE_CONVERSATION_REPORT_TOOL_DESCRIPTION = """
 Create an archived conversation report for long-term memory.
+Use when the user wants to save a reusable summary for future sessions.
 Call this only after the user explicitly confirms saving the report.
 """.strip()

@@ -35,9 +35,11 @@ def test_prompt_includes_company_context_when_enabled_and_present():
     assert "Company description: We sell shoes." in prompt
 
 
-def test_base_prompt_declares_conversation_wide_sandbox_mounting():
-    assert "mounts all attachments from the current conversation automatically" in BASE_AGENT_SYSTEM_PROMPT
-    assert "Only call create_conversation_report after the user explicitly confirms" not in BASE_AGENT_SYSTEM_PROMPT
+def test_base_prompt_omits_tool_usage_instructions():
+    assert "When helpful, call tools to retrieve facts or compute results." not in BASE_AGENT_SYSTEM_PROMPT
+    assert "run_python_code" not in BASE_AGENT_SYSTEM_PROMPT
+    assert "create_conversation_report" not in BASE_AGENT_SYSTEM_PROMPT
+    assert "load_dataframe(path, **kwargs)" not in BASE_AGENT_SYSTEM_PROMPT
     assert "input_filenames" not in BASE_AGENT_SYSTEM_PROMPT
     assert "attachment_ids" not in BASE_AGENT_SYSTEM_PROMPT
     assert "pass attachment_ids as a list of selected user attachment IDs" not in BASE_AGENT_SYSTEM_PROMPT

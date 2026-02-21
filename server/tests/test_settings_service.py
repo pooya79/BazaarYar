@@ -4,10 +4,15 @@ import asyncio
 import importlib
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
+
 from server.features.settings.types import (
     CompanyProfilePatch,
     ModelSettingsPatch,
     ModelSettingsResolved,
+    ToolSettingsPatch,
+    ToolSettingsResolved,
 )
 
 settings_service = importlib.import_module("server.features.settings.service")
@@ -247,3 +252,83 @@ def test_reset_company_profile_calls_repo(monkeypatch):
     monkeypatch.setattr(settings_service.repo, "delete_global_company_profile", _fake_delete)
     result = asyncio.run(settings_service.reset_company_profile(_DummySession()))
     assert result is True
+
+
+def test_resolve_effective_tool_settings_filters_unknown_overrides(monkeypatch):
+    async def _fake_get_global(_session):
+        return SimpleNamespace(
+            tool_overrides_json={
+                "utc_time": False,
+                "run_python_code": True,
+                "removed_tool": True,
+                "bad_value": "yes",
+            }
+        )
+
+    monkeypatch.setattr(settings_service.repo, "get_global_tool_settings", _fake_get_global)
+
+    resolved = asyncio.run(settings_service.resolve_effective_tool_settings(_DummySession()))
+
+    assert resolved.tool_overrides["utc_time"] is False
+    assert resolved.tool_overrides["run_python_code"] is True
+    assert "removed_tool" not in resolved.tool_overrides
+    assert "bad_value" not in resolved.tool_overrides
+    assert resolved.source == "database"
+
+
+def test_patch_tool_settings_rejects_unknown_tool_keys(monkeypatch):
+    async def _fake_get_global(_session):
+        return None
+
+    monkeypatch.setattr(settings_service.repo, "get_global_tool_settings", _fake_get_global)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            settings_service.patch_tool_settings(
+                _DummySession(),
+                ToolSettingsPatch(tool_overrides={"unknown_tool": True}),
+            )
+        )
+
+    assert exc.value.status_code == 422
+    assert "unknown_tool" in str(exc.value.detail)
+
+
+def test_patch_tool_settings_stores_only_non_default_overrides(monkeypatch):
+    async def _fake_get_global(_session):
+        return None
+
+    captured: dict[str, object] = {}
+
+    async def _fake_upsert(_session, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(settings_service.repo, "get_global_tool_settings", _fake_get_global)
+    monkeypatch.setattr(settings_service.repo, "upsert_global_tool_settings", _fake_upsert)
+
+    patch = ToolSettingsPatch(
+        tool_overrides={
+            "utc_time": False,
+            "reverse_text": True,
+        }
+    )
+    resolved = asyncio.run(settings_service.patch_tool_settings(_DummySession(), patch))
+
+    assert captured["tool_overrides_json"] == {"utc_time": False}
+    assert resolved.tool_overrides == {"utc_time": False}
+    assert resolved.source == "database"
+
+
+def test_to_tool_settings_response_derives_group_enabled_state():
+    response = settings_service.to_tool_settings_response(
+        ToolSettingsResolved(
+            tool_overrides={"utc_time": False},
+            source="database",
+        )
+    )
+
+    basic_group = next(group for group in response.groups if group.key == "basic_tools")
+    assert basic_group.enabled is True
+    utc_tool = next(tool for tool in basic_group.tools if tool.key == "utc_time")
+    assert utc_tool.enabled is False

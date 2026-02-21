@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -32,24 +33,206 @@ def reverse_text(text: str) -> str:
 def utc_time() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat() + "Z"
 
-_BASE_TOOLS = [add_numbers, reverse_text, utc_time]
+_BASE_TOOLS = (add_numbers, reverse_text, utc_time)
 
 
-def _build_tools() -> list[Any]:
-    settings = get_settings()
-    tools = [*_BASE_TOOLS, *REPORT_TOOLS]
+@dataclass(frozen=True)
+class ToolRegistryEntry:
+    key: str
+    group_key: str
+    group_label: str
+    tool_label: str
+    description: str
+    default_enabled: bool
+    tool: Any
+    availability: Callable[[Any], tuple[bool, str | None]]
+
+
+@dataclass(frozen=True)
+class ResolvedTool:
+    key: str
+    label: str
+    description: str
+    default_enabled: bool
+    available: bool
+    unavailable_reason: str | None
+    enabled: bool
+    tool: Any
+
+
+@dataclass(frozen=True)
+class ResolvedToolGroup:
+    key: str
+    label: str
+    enabled: bool
+    tools: tuple[ResolvedTool, ...]
+
+
+def _always_available(_settings: Any) -> tuple[bool, str | None]:
+    return True, None
+
+
+def _sandbox_availability(settings: Any) -> tuple[bool, str | None]:
     if settings.sandbox_tool_enabled:
-        tools.extend(PYTHON_SANDBOX_TOOLS)
+        return True, None
+    return False, "Code runner is disabled by server configuration."
+
+
+def _tool_label_from_key(key: str) -> str:
+    return key.replace("_", " ").strip().title()
+
+
+def _tool_description(tool_obj: Any) -> str:
+    description = getattr(tool_obj, "description", "")
+    if not isinstance(description, str):
+        return ""
+    return description.strip()
+
+
+def _tool_key(tool_obj: Any) -> str:
+    name = getattr(tool_obj, "name", "")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return _tool_label_from_key(str(tool_obj))
+
+
+def _build_registry() -> tuple[ToolRegistryEntry, ...]:
+    utility_tool_labels = {
+        "add_numbers": "Add Numbers",
+        "reverse_text": "Reverse Text",
+        "utc_time": "UTC Time",
+    }
+
+    entries: list[ToolRegistryEntry] = []
+    seen_keys: set[str] = set()
+
+    for tool_obj in _BASE_TOOLS:
+        key = _tool_key(tool_obj)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        entries.append(
+            ToolRegistryEntry(
+                key=key,
+                group_key="basic_tools",
+                group_label="Basic tools",
+                tool_label=utility_tool_labels.get(key, _tool_label_from_key(key)),
+                description=_tool_description(tool_obj),
+                default_enabled=True,
+                tool=tool_obj,
+                availability=_always_available,
+            )
+        )
+
+    for tool_obj in REPORT_TOOLS:
+        key = _tool_key(tool_obj)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        entries.append(
+            ToolRegistryEntry(
+                key=key,
+                group_key="conversation_tools",
+                group_label="Conversation tools",
+                tool_label=_tool_label_from_key(key),
+                description=_tool_description(tool_obj),
+                default_enabled=True,
+                tool=tool_obj,
+                availability=_always_available,
+            )
+        )
+
+    for tool_obj in PYTHON_SANDBOX_TOOLS:
+        key = _tool_key(tool_obj)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        entries.append(
+            ToolRegistryEntry(
+                key=key,
+                group_key="code_runner",
+                group_label="Code runner",
+                tool_label=_tool_label_from_key(key),
+                description=_tool_description(tool_obj),
+                default_enabled=True,
+                tool=tool_obj,
+                availability=_sandbox_availability,
+            )
+        )
+
+    return tuple(entries)
+
+
+TOOL_REGISTRY = _build_registry()
+
+
+def tool_registry_keys() -> set[str]:
+    return {entry.key for entry in TOOL_REGISTRY}
+
+
+def tool_default_enabled_map() -> dict[str, bool]:
+    return {entry.key: entry.default_enabled for entry in TOOL_REGISTRY}
+
+
+def resolve_tool_groups(
+    tool_overrides: Mapping[str, bool] | None = None,
+) -> tuple[ResolvedToolGroup, ...]:
+    settings = get_settings()
+    normalized_overrides = dict(tool_overrides or {})
+    grouped: dict[str, list[ResolvedTool]] = {}
+    group_labels: dict[str, str] = {}
+    group_order: list[str] = []
+
+    for entry in TOOL_REGISTRY:
+        if entry.group_key not in grouped:
+            grouped[entry.group_key] = []
+            group_labels[entry.group_key] = entry.group_label
+            group_order.append(entry.group_key)
+
+        available, unavailable_reason = entry.availability(settings)
+        requested_enabled = normalized_overrides.get(entry.key, entry.default_enabled)
+        enabled = bool(requested_enabled) and available
+
+        grouped[entry.group_key].append(
+            ResolvedTool(
+                key=entry.key,
+                label=entry.tool_label,
+                description=entry.description,
+                default_enabled=entry.default_enabled,
+                available=available,
+                unavailable_reason=unavailable_reason,
+                enabled=enabled,
+                tool=entry.tool,
+            )
+        )
+
+    result: list[ResolvedToolGroup] = []
+    for group_key in group_order:
+        tools = tuple(grouped[group_key])
+        result.append(
+            ResolvedToolGroup(
+                key=group_key,
+                label=group_labels[group_key],
+                enabled=any(tool.enabled for tool in tools),
+                tools=tools,
+            )
+        )
+    return tuple(result)
+
+
+def resolve_agent_tools(tool_overrides: Mapping[str, bool] | None = None) -> list[Any]:
+    tools: list[Any] = []
+    for group in resolve_tool_groups(tool_overrides):
+        for resolved in group.tools:
+            if resolved.enabled:
+                tools.append(resolved.tool)
     return tools
 
 
-TOOLS = _build_tools()
-
-
-def build_agent_runtime(model: Any, *, system_prompt: str):
+def build_agent_runtime(model: Any, *, system_prompt: str, tools: list[Any]):
     return create_agent(
         model=model,
-        tools=TOOLS,
+        tools=tools,
         system_prompt=system_prompt,
     )
 

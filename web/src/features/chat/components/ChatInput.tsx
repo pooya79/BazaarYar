@@ -1,4 +1,10 @@
-import { Mic, Paperclip, SendHorizontal, Square } from "lucide-react";
+import {
+  Mic,
+  Paperclip,
+  SendHorizontal,
+  SlidersHorizontal,
+  Square,
+} from "lucide-react";
 import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
 import { useRef } from "react";
 import { cn } from "@/shared/lib/utils";
@@ -29,6 +35,8 @@ type ChatInputProps = {
   onRemoveAttachment: (attachmentId: string) => void;
   brandVoice: string;
   onToggleBrandVoice: () => void;
+  onOpenToolSettings: () => void;
+  toolSettingsBusy: boolean;
 };
 
 function formatBytes(size: number) {
@@ -51,6 +59,8 @@ export function ChatInput({
   onRemoveAttachment,
   brandVoice,
   onToggleBrandVoice,
+  onOpenToolSettings,
+  toolSettingsBusy,
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,6 +148,17 @@ export function ChatInput({
               onClick={() => fileInputRef.current?.click()}
             >
               <Paperclip className={iconClass} aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-md text-marketing-text-muted hover:bg-marketing-accent-medium hover:text-marketing-text-primary"
+              type="button"
+              title="Tools"
+              onClick={onOpenToolSettings}
+              disabled={toolSettingsBusy}
+            >
+              <SlidersHorizontal className={iconClass} aria-hidden="true" />
             </Button>
             <Button
               variant="ghost"

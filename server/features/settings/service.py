@@ -3,9 +3,15 @@ from __future__ import annotations
 import logging
 from typing import cast
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
+from server.features.agent.runtime import (
+    resolve_tool_groups,
+    tool_default_enabled_map,
+    tool_registry_keys,
+)
 from server.features.shared.text_sanitize import log_sanitization_stats, sanitize_text
 
 from . import repo
@@ -17,6 +23,11 @@ from .types import (
     ModelSettingsResolved,
     ModelSettingsResponse,
     ReasoningEffort,
+    ToolCatalogGroup,
+    ToolCatalogTool,
+    ToolSettingsPatch,
+    ToolSettingsResolved,
+    ToolSettingsResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +84,44 @@ async def resolve_effective_company_profile(session: AsyncSession) -> CompanyPro
     )
 
 
+def default_tool_settings() -> ToolSettingsResolved:
+    return ToolSettingsResolved(
+        tool_overrides={},
+        source="defaults",
+    )
+
+
+def _normalize_tool_overrides(
+    value: object,
+) -> dict[str, bool]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, bool] = {}
+    for key, item in value.items():
+        if isinstance(key, str) and isinstance(item, bool):
+            normalized[key] = item
+    return normalized
+
+
+async def resolve_effective_tool_settings(session: AsyncSession) -> ToolSettingsResolved:
+    row = await repo.get_global_tool_settings(session)
+    if row is None:
+        return default_tool_settings()
+
+    known_keys = tool_registry_keys()
+    filtered_overrides = {
+        key: value
+        for key, value in _normalize_tool_overrides(row.tool_overrides_json).items()
+        if key in known_keys
+    }
+
+    return ToolSettingsResolved(
+        tool_overrides=filtered_overrides,
+        source="database",
+    )
+
+
 def _preview_api_key(value: str) -> str | None:
     cleaned = value.strip()
     if not cleaned:
@@ -101,6 +150,44 @@ def to_company_profile_response(settings: CompanyProfileResolved) -> CompanyProf
         name=settings.name,
         description=settings.description,
         enabled=settings.enabled,
+        source=settings.source,
+    )
+
+
+def to_tool_settings_response(settings: ToolSettingsResolved) -> ToolSettingsResponse:
+    resolved_groups = resolve_tool_groups(settings.tool_overrides)
+    groups: list[ToolCatalogGroup] = []
+    for group in resolved_groups:
+        groups.append(
+            ToolCatalogGroup(
+                key=group.key,
+                label=group.label,
+                enabled=group.enabled,
+                tools=[
+                    ToolCatalogTool(
+                        key=tool.key,
+                        label=tool.label,
+                        description=tool.description,
+                        default_enabled=tool.default_enabled,
+                        available=tool.available,
+                        unavailable_reason=tool.unavailable_reason,
+                        enabled=tool.enabled,
+                    )
+                    for tool in group.tools
+                ],
+            )
+        )
+
+    known_keys = tool_registry_keys()
+    filtered_overrides = {
+        key: value
+        for key, value in settings.tool_overrides.items()
+        if key in known_keys
+    }
+
+    return ToolSettingsResponse(
+        groups=groups,
+        tool_overrides=filtered_overrides,
         source=settings.source,
     )
 
@@ -184,6 +271,54 @@ async def patch_model_settings(
 
 async def reset_model_settings(session: AsyncSession) -> bool:
     return await repo.delete_global_model_settings(session)
+
+
+async def patch_tool_settings(
+    session: AsyncSession,
+    patch_payload: ToolSettingsPatch,
+) -> ToolSettingsResolved:
+    current = await resolve_effective_tool_settings(session)
+    patch_data = patch_payload.model_dump(exclude_unset=True)
+    if not patch_data:
+        return current
+
+    incoming = patch_data.get("tool_overrides", {})
+    if not isinstance(incoming, dict):
+        incoming = {}
+
+    known_keys = tool_registry_keys()
+    unknown_keys = [key for key in incoming if key not in known_keys]
+    if unknown_keys:
+        sorted_keys = ", ".join(sorted(unknown_keys))
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown tool key(s): {sorted_keys}",
+        )
+
+    merged = dict(current.tool_overrides)
+    for key, value in incoming.items():
+        if isinstance(value, bool):
+            merged[key] = value
+
+    defaults = tool_default_enabled_map()
+    overrides_for_storage = {
+        key: value
+        for key, value in merged.items()
+        if key in known_keys and value != defaults.get(key, True)
+    }
+
+    row = await repo.upsert_global_tool_settings(
+        session,
+        tool_overrides_json=overrides_for_storage,
+    )
+    return ToolSettingsResolved(
+        tool_overrides=_normalize_tool_overrides(row.tool_overrides_json),
+        source="database",
+    )
+
+
+async def reset_tool_settings(session: AsyncSession) -> bool:
+    return await repo.delete_global_tool_settings(session)
 
 
 async def patch_company_profile(

@@ -61,8 +61,13 @@ from server.features.chat import (
 from server.features.settings.service import (
     resolve_effective_company_profile,
     resolve_effective_model_settings,
+    resolve_effective_tool_settings,
 )
-from server.features.settings.types import CompanyProfileResolved, ModelSettingsResolved
+from server.features.settings.types import (
+    CompanyProfileResolved,
+    ModelSettingsResolved,
+    ToolSettingsResolved,
+)
 from server.features.shared.ids import parse_uuid
 
 
@@ -168,6 +173,7 @@ async def stream_agent_response(
     settings = get_settings()
     model_settings = await resolve_effective_model_settings(session)
     company_profile = await resolve_effective_company_profile(session)
+    tool_settings = await resolve_effective_tool_settings(session)
     context_messages = await build_context_window_for_model(
         session,
         conversation_id=conversation.id,
@@ -267,7 +273,7 @@ async def stream_agent_response(
 
         async def _producer() -> None:
             nonlocal producer_error, streamed_text_buffer
-            agent = get_agent(model_settings, company_profile)
+            agent = get_agent(model_settings, company_profile, tool_settings)
             final_ai: AIMessage | None = None
             request_context = AgentRequestContext(
                 latest_user_message=user_message,
@@ -486,5 +492,6 @@ async def stream_agent_response(
 def get_agent(
     model_settings: ModelSettingsResolved,
     company_profile: CompanyProfileResolved,
+    tool_settings: ToolSettingsResolved,
 ):
-    return build_agent(model_settings, company_profile)
+    return build_agent(model_settings, company_profile, tool_settings)

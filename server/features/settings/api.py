@@ -8,18 +8,24 @@ from server.db.session import get_db_session
 from .service import (
     patch_company_profile,
     patch_model_settings,
+    patch_tool_settings,
     resolve_effective_company_profile,
     resolve_effective_model_settings,
+    resolve_effective_tool_settings,
     reset_company_profile,
     reset_model_settings,
+    reset_tool_settings,
     to_company_profile_response,
     to_model_settings_response,
+    to_tool_settings_response,
 )
 from .types import (
     CompanyProfilePatch,
     CompanyProfileResponse,
     ModelSettingsPatch,
     ModelSettingsResponse,
+    ToolSettingsPatch,
+    ToolSettingsResponse,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -47,6 +53,31 @@ async def delete_model_settings(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, bool]:
     reset = await reset_model_settings(session)
+    return {"reset": reset}
+
+
+@router.get("/tools", response_model=ToolSettingsResponse)
+async def get_tool_settings(
+    session: AsyncSession = Depends(get_db_session),
+) -> ToolSettingsResponse:
+    settings = await resolve_effective_tool_settings(session)
+    return to_tool_settings_response(settings)
+
+
+@router.patch("/tools", response_model=ToolSettingsResponse)
+async def patch_tool_settings_route(
+    payload: ToolSettingsPatch,
+    session: AsyncSession = Depends(get_db_session),
+) -> ToolSettingsResponse:
+    settings = await patch_tool_settings(session, payload)
+    return to_tool_settings_response(settings)
+
+
+@router.delete("/tools")
+async def delete_tool_settings(
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, bool]:
+    reset = await reset_tool_settings(session)
     return {"reset": reset}
 
 

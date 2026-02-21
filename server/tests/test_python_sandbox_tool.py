@@ -36,6 +36,13 @@ def test_python_sandbox_tool_exposes_no_file_selector_args():
     assert sandbox_tool.run_python_code.name == "run_python_code"
     assert "input_filenames" not in sandbox_tool.run_python_code.description
     assert "attachment_ids" not in sandbox_tool.run_python_code.description
+    assert "mounts all attachments linked to the current conversation automatically" in (
+        sandbox_tool.run_python_code.description
+    )
+    assert "do not give Python for the user to run manually" in (
+        sandbox_tool.run_python_code.description
+    )
+    assert "If sandbox session is not alive" in sandbox_tool.run_python_code.description
     assert "load_dataframe(path, **kwargs)" in sandbox_tool.run_python_code.description
 
 

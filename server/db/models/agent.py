@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from server.db.base import Base
@@ -83,6 +83,38 @@ class AgentCompanyProfile(Base):
         nullable=False,
         default=True,
         server_default="true",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class AgentToolSettings(Base):
+    __tablename__ = "agent_tool_settings"
+    __table_args__ = (
+        UniqueConstraint("singleton_key", name="uq_agent_tool_settings_singleton_key"),
+        CheckConstraint("singleton_key = 'global'", name="ck_agent_tool_settings_singleton_key_global"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    singleton_key: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="global",
+        server_default="global",
+    )
+    tool_overrides_json: Mapped[dict[str, bool]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

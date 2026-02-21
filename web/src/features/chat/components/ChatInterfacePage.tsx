@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatEmptyState } from "@/features/chat/components/ChatEmptyState";
 import { ChatInput } from "@/features/chat/components/ChatInput";
 import { ChatMessages } from "@/features/chat/components/ChatMessages";
+import { ToolSettingsModal } from "@/features/chat/components/ToolSettingsModal";
 import { useChatSession } from "@/features/chat/hooks/useChatSession";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import {
@@ -13,6 +14,7 @@ import {
   toMessageAttachment,
   useComposerAttachments,
 } from "@/features/chat/hooks/useComposerAttachments";
+import { useToolSettings } from "@/features/chat/hooks/useToolSettings";
 import { brandVoices, quickActions } from "@/features/chat/model/constants";
 import type { AssistantTurn } from "@/features/chat/model/types";
 import { formatTime } from "@/features/chat/utils/chatViewUtils";
@@ -31,6 +33,7 @@ export function ChatInterfacePage() {
     clearPendingAttachments,
   } = useComposerAttachments();
   const [brandVoiceIndex, setBrandVoiceIndex] = useState(0);
+  const [toolModalOpen, setToolModalOpen] = useState(false);
 
   const messageId = useRef(0);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
@@ -95,6 +98,20 @@ export function ChatInterfacePage() {
       router.replace(`/c/${conversationId}`);
     },
   });
+
+  const {
+    groups: toolGroups,
+    isLoading: isToolSettingsLoading,
+    isSaving: isToolSettingsSaving,
+    loadError: toolSettingsLoadError,
+    saveError: toolSettingsSaveError,
+    hasUnsavedChanges: hasUnsavedToolChanges,
+    toggleTool,
+    toggleGroup,
+    reload: reloadToolSettings,
+    save: saveToolSettings,
+    discardChanges: discardToolChanges,
+  } = useToolSettings();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: route changes must cancel active streams.
   useEffect(() => {
@@ -231,6 +248,30 @@ export function ChatInterfacePage() {
         onRemoveAttachment={handleRemoveAttachment}
         brandVoice={brandVoices[brandVoiceIndex]}
         onToggleBrandVoice={toggleBrandVoice}
+        onOpenToolSettings={() => setToolModalOpen(true)}
+        toolSettingsBusy={isToolSettingsLoading}
+      />
+      <ToolSettingsModal
+        open={toolModalOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            discardToolChanges();
+          }
+          setToolModalOpen(nextOpen);
+        }}
+        groups={toolGroups}
+        isLoading={isToolSettingsLoading}
+        isSaving={isToolSettingsSaving}
+        hasUnsavedChanges={hasUnsavedToolChanges}
+        loadError={toolSettingsLoadError}
+        saveError={toolSettingsSaveError}
+        onToggleGroup={toggleGroup}
+        onToggleTool={toggleTool}
+        onReload={() => {
+          void reloadToolSettings();
+        }}
+        onSave={saveToolSettings}
+        onDiscard={discardToolChanges}
       />
     </>
   );

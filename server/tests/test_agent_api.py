@@ -16,7 +16,11 @@ agents_api = importlib.import_module("server.features.agent.api.streaming")
 agent_router_api = importlib.import_module("server.features.agent.api.router")
 conversations_api = importlib.import_module("server.features.chat.api")
 from server.features.chat import ConversationListEntry, ConversationNotFoundError
-from server.features.settings.types import CompanyProfileResolved, ModelSettingsResolved
+from server.features.settings.types import (
+    CompanyProfileResolved,
+    ModelSettingsResolved,
+    ToolSettingsResolved,
+)
 from server.main import app
 
 
@@ -419,10 +423,18 @@ def _patch_memory_store(monkeypatch):
             source="defaults",
         )
 
+    async def _fake_tool_settings(_session):
+        return ToolSettingsResolved(
+            tool_overrides={},
+            source="defaults",
+        )
+
     monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agents_api, "resolve_effective_company_profile", _fake_company_profile)
     monkeypatch.setattr(agent_router_api, "resolve_effective_company_profile", _fake_company_profile)
+    monkeypatch.setattr(agents_api, "resolve_effective_tool_settings", _fake_tool_settings)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_tool_settings", _fake_tool_settings)
 
     app.dependency_overrides[get_db_session] = _override_db
     return store
@@ -460,10 +472,32 @@ def _payload_message_texts(messages):
 
 
 def test_runtime_tool_list_includes_conversation_report_tools():
-    tool_names = {tool.name for tool in agent_runtime.TOOLS}
+    tool_names = {tool.name for tool in agent_runtime.resolve_agent_tools({})}
     assert "list_conversation_reports" in tool_names
     assert "get_conversation_report" in tool_names
     assert "create_conversation_report" in tool_names
+
+
+def test_runtime_tool_list_excludes_tool_when_overridden_off():
+    tool_names = {tool.name for tool in agent_runtime.resolve_agent_tools({"utc_time": False})}
+    assert "utc_time" not in tool_names
+
+
+def test_runtime_tool_list_disabling_basic_group_tools_removes_basic_group():
+    groups = agent_runtime.resolve_tool_groups({})
+    basic_group = next(group for group in groups if group.key == "basic_tools")
+    overrides = {tool.key: False for tool in basic_group.tools}
+
+    tool_names = {tool.name for tool in agent_runtime.resolve_agent_tools(overrides)}
+
+    for tool in basic_group.tools:
+        assert tool.key not in tool_names
+
+
+def test_runtime_tool_groups_include_conversation_group():
+    groups = agent_runtime.resolve_tool_groups({})
+    group_keys = {group.key for group in groups}
+    assert "conversation_tools" in group_keys
 
 
 def test_agent_non_stream_response(monkeypatch):

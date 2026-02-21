@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.db.models import AgentCompanyProfile, AgentModelSettings
+from server.db.models import AgentCompanyProfile, AgentModelSettings, AgentToolSettings
 
 GLOBAL_SINGLETON_KEY = "global"
 
@@ -93,6 +93,42 @@ async def upsert_global_company_profile(
 
 async def delete_global_company_profile(session: AsyncSession) -> bool:
     row = await get_global_company_profile(session)
+    if row is None:
+        return False
+
+    await session.delete(row)
+    await session.commit()
+    return True
+
+
+async def get_global_tool_settings(session: AsyncSession) -> AgentToolSettings | None:
+    stmt = select(AgentToolSettings).where(AgentToolSettings.singleton_key == GLOBAL_SINGLETON_KEY)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def upsert_global_tool_settings(
+    session: AsyncSession,
+    *,
+    tool_overrides_json: dict[str, bool],
+) -> AgentToolSettings:
+    row = await get_global_tool_settings(session)
+    if row is None:
+        row = AgentToolSettings(
+            singleton_key=GLOBAL_SINGLETON_KEY,
+            tool_overrides_json=tool_overrides_json,
+        )
+        session.add(row)
+    else:
+        row.tool_overrides_json = tool_overrides_json
+
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+async def delete_global_tool_settings(session: AsyncSession) -> bool:
+    row = await get_global_tool_settings(session)
     if row is None:
         return False
 

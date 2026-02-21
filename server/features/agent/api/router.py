@@ -16,6 +16,7 @@ from server.features.agent.service import extract_trace
 from server.features.settings.service import (
     resolve_effective_company_profile,
     resolve_effective_model_settings,
+    resolve_effective_tool_settings,
 )
 from server.features.shared.ids import parse_uuid
 
@@ -37,7 +38,8 @@ async def run_agent(
         raise HTTPException(status_code=400, detail="Provide message or history.")
     model_settings = await resolve_effective_model_settings(session)
     company_profile = await resolve_effective_company_profile(session)
-    agent = streaming.get_agent(model_settings, company_profile)
+    tool_settings = await resolve_effective_tool_settings(session)
+    agent = streaming.get_agent(model_settings, company_profile, tool_settings)
     request_context = AgentRequestContext(
         latest_user_message=(payload.message or "").strip(),
         latest_user_attachment_ids=tuple(
