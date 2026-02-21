@@ -43,16 +43,15 @@ def test_feature_service_and_repo_do_not_import_api_modules() -> None:
     assert not violations, "Service/repo modules cannot import API modules:\n" + "\n".join(violations)
 
 
-def test_chat_and_tables_features_do_not_import_agent_runtime() -> None:
+def test_chat_feature_does_not_import_agent_runtime() -> None:
     violations: list[str] = []
-    for feature_name in ("chat", "tables"):
-        for file_path in _iter_python_files(SERVER / "features" / feature_name):
-            for module, lineno in _imports_for(file_path):
-                if module.startswith("server.agents"):
-                    violations.append(f"{file_path}:{lineno} imports '{module}'")
-                if module.startswith("server.features.agent"):
-                    violations.append(f"{file_path}:{lineno} imports '{module}'")
-    assert not violations, "Chat/tables modules cannot import agent runtime modules:\n" + "\n".join(violations)
+    for file_path in _iter_python_files(SERVER / "features" / "chat"):
+        for module, lineno in _imports_for(file_path):
+            if module.startswith("server.agents"):
+                violations.append(f"{file_path}:{lineno} imports '{module}'")
+            if module.startswith("server.features.agent"):
+                violations.append(f"{file_path}:{lineno} imports '{module}'")
+    assert not violations, "Chat modules cannot import agent runtime modules:\n" + "\n".join(violations)
 
 
 def test_business_modules_do_not_import_legacy_agents_attachments() -> None:

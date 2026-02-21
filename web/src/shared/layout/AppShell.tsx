@@ -58,7 +58,6 @@ export function AppShell({ children }: AppShellProps) {
     [],
   );
 
-  const isReferenceTablesRoute = pathname.startsWith("/reference-tables");
   const isReportsRoute = pathname.startsWith("/reports");
   const isModelSettingsRoute = pathname.startsWith("/settings/model");
   const isCompanySettingsRoute = pathname.startsWith("/settings/company");
@@ -72,13 +71,11 @@ export function AppShell({ children }: AppShellProps) {
     return match ? match[1] : null;
   }, [pathname]);
 
-  const displayToolId = isReferenceTablesRoute
-    ? "reference-tables"
-    : isCompanySettingsRoute
-      ? "company-profile"
-      : isReportsRoute
-        ? "conversation-reports"
-        : activeTool;
+  const displayToolId = isCompanySettingsRoute
+    ? "company-profile"
+    : isReportsRoute
+      ? "conversation-reports"
+      : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
     if (isModelSettingsRoute) {
@@ -216,20 +213,14 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
 
   useEffect(() => {
-    if (isReferenceTablesRoute) {
-      setActiveTool("reference-tables");
-      return;
-    }
     if (isReportsRoute) {
       setActiveTool("conversation-reports");
       return;
     }
     setActiveTool((current) =>
-      current === "reference-tables" || current === "conversation-reports"
-        ? "assistant"
-        : current,
+      current === "conversation-reports" ? "assistant" : current,
     );
-  }, [isReferenceTablesRoute, isReportsRoute]);
+  }, [isReportsRoute]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -269,13 +260,11 @@ export function AppShell({ children }: AppShellProps) {
 
     setActiveTool(toolId);
     setChatMenuOpenId(null);
-    if (toolId === "reference-tables") {
-      router.push("/reference-tables");
-    } else if (toolId === "conversation-reports") {
+    if (toolId === "conversation-reports") {
       router.push("/reports");
     } else if (toolId === "company-profile") {
       router.push("/settings/company");
-    } else if (isReferenceTablesRoute || isReportsRoute || isSettingsRoute) {
+    } else if (isReportsRoute || isSettingsRoute) {
       router.push("/");
     }
     closeSidebarOnMobile();

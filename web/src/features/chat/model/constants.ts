@@ -6,7 +6,6 @@ import {
   Globe,
   Mail,
   MessageSquare,
-  Table,
   Target,
 } from "lucide-react";
 
@@ -28,7 +27,6 @@ export const library: LibrarySection[] = [
         label: "Conversation Reports",
         icon: FileText,
       },
-      { id: "reference-tables", label: "Reference Tables", icon: Table },
     ],
   },
 ];

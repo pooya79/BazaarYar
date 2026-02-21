@@ -4,10 +4,6 @@ from .models import (
     Conversation,
     Message,
     MessageAttachment,
-    ReferenceTable,
-    ReferenceTableColumn,
-    ReferenceTableImportJob,
-    ReferenceTableRow,
 )
 
 __all__ = [
@@ -16,8 +12,4 @@ __all__ = [
     "Message",
     "Attachment",
     "MessageAttachment",
-    "ReferenceTable",
-    "ReferenceTableColumn",
-    "ReferenceTableRow",
-    "ReferenceTableImportJob",
 ]
