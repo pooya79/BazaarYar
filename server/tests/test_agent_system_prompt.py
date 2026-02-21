@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from server.features.agent.prompts.system_prompt import (
     BASE_AGENT_SYSTEM_PROMPT,
+    PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX,
     build_agent_system_prompt,
 )
 
@@ -33,6 +34,45 @@ def test_prompt_includes_company_context_when_enabled_and_present():
     assert "Company Context" in prompt
     assert "Company name: Acme" in prompt
     assert "Company description: We sell shoes." in prompt
+
+
+def test_prompt_includes_python_appendix_when_enabled():
+    prompt = build_agent_system_prompt(
+        company_name="",
+        company_description="",
+        company_enabled=False,
+        python_code_enabled=True,
+    )
+    assert PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX in prompt
+    assert "Python Code Runner Guidance" in prompt
+    assert "sandbox_mount_ready_files" in prompt
+    assert "input_files" in prompt
+    assert "use only filenames listed in the runtime context" not in prompt
+
+
+def test_prompt_omits_python_appendix_when_disabled():
+    prompt = build_agent_system_prompt(
+        company_name="Acme",
+        company_description="We sell shoes.",
+        company_enabled=True,
+        python_code_enabled=False,
+    )
+    assert PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX not in prompt
+    assert "Python Code Runner Guidance" not in prompt
+
+
+def test_prompt_includes_company_context_and_python_appendix_when_both_enabled():
+    prompt = build_agent_system_prompt(
+        company_name="Acme",
+        company_description="We sell shoes.",
+        company_enabled=True,
+        python_code_enabled=True,
+    )
+    assert "Company Context" in prompt
+    assert "Company name: Acme" in prompt
+    assert "Company description: We sell shoes." in prompt
+    assert PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX in prompt
+    assert "Python Code Runner Guidance" in prompt
 
 
 def test_base_prompt_omits_tool_usage_instructions():

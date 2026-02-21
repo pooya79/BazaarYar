@@ -615,7 +615,7 @@ def build_attachment_message_parts_for_items(
         ]
         if item.preview_text:
             lines.append(
-                "- extracted_content_preview: This is a preview of the actual content; full content may be larger."
+                "- (first 5 rows and 20 columns are shown)"
             )
             lines.append(item.preview_text)
         elif item.extraction_note:

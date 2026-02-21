@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.features.agent.sandbox.event_bus import (
@@ -18,7 +19,7 @@ from server.features.agent.sandbox.event_bus import (
 )
 from server.features.agent.sandbox.session_executor import get_conversation_sandbox_status
 from server.features.agent.usage import extract_usage
-from server.db.models import Attachment, Conversation, Message
+from server.db.models import Attachment, Conversation, Message, MessageAttachment
 from server.features.agent.api.formatters import (
     artifact_attachment_ids,
     format_meta_block,
@@ -128,6 +129,53 @@ async def _tool_result_artifacts(
     ]
 
 
+async def _conversation_attachment_filenames(
+    session: AsyncSession,
+    *,
+    conversation_id: UUID,
+) -> list[str]:
+    if hasattr(session, "execute"):
+        stmt = (
+            select(Attachment.filename)
+            .join(MessageAttachment, MessageAttachment.attachment_id == Attachment.id)
+            .join(Message, MessageAttachment.message_id == Message.id)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(
+                Message.created_at.asc(),
+                Message.id.asc(),
+                MessageAttachment.position.asc(),
+                Attachment.id.asc(),
+            )
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+        output: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            filename = str(row or "").strip()
+            if not filename or filename in seen:
+                continue
+            seen.add(filename)
+            output.append(filename)
+        return output
+
+    store = getattr(session, "store", None)
+    if store is None:
+        return []
+
+    messages = getattr(store, "messages", {}).get(str(conversation_id), [])
+    output: list[str] = []
+    seen: set[str] = set()
+    for message in messages:
+        for link in getattr(message, "attachment_links", []):
+            attachment = getattr(link, "attachment", None)
+            filename = str(getattr(attachment, "filename", "") or "").strip()
+            if not filename or filename in seen:
+                continue
+            seen.add(filename)
+            output.append(filename)
+    return output
+
+
 async def stream_agent_response(
     payload: AgentRequest,
     *,
@@ -189,6 +237,15 @@ async def stream_agent_response(
             session,
             conversation_id=str(conversation.id),
         )
+        conversation_files = await _conversation_attachment_filenames(
+            session,
+            conversation_id=conversation.id,
+        )
+        mount_ready_files = (
+            sandbox_status.available_files
+            if sandbox_status.available_files
+            else conversation_files
+        )
         model_messages.append(
             HumanMessage(
                 content=(
@@ -197,7 +254,11 @@ async def stream_agent_response(
                     f"sandbox_session_id: {sandbox_status.session_id or 'none'}\n"
                     f"sandbox_request_sequence: {sandbox_status.request_sequence if sandbox_status.request_sequence is not None else 'none'}\n"
                     f"sandbox_available_files: {json.dumps(sandbox_status.available_files, ensure_ascii=True)}\n"
+                    f"sandbox_conversation_files: {json.dumps(conversation_files, ensure_ascii=True)}\n"
+                    f"sandbox_mount_ready_files: {json.dumps(mount_ready_files, ensure_ascii=True)}\n"
                     f"sandbox_status_reason: {sandbox_status.reason}"
+                    "\n"
+                    "Mount behavior: run_python_code mounts conversation files at execution time, even when no live sandbox session exists yet."
                 )
             )
         )

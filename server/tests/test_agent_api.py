@@ -471,6 +471,13 @@ def _payload_message_texts(messages):
     return output
 
 
+def _sandbox_runtime_context_text(messages):
+    for text in _payload_message_texts(messages):
+        if "Sandbox runtime context (system-generated):" in text:
+            return text
+    return ""
+
+
 def test_runtime_tool_list_includes_conversation_report_tools():
     tool_names = {tool.name for tool in agent_runtime.resolve_agent_tools({})}
     assert "list_conversation_reports" in tool_names
@@ -809,9 +816,12 @@ def test_stream_injects_live_sandbox_status_message(monkeypatch):
     assert response.status_code == 200
 
     assert stub.last_payload is not None
-    texts = _payload_message_texts(stub.last_payload["messages"])
-    assert any("sandbox_session_alive: true" in text for text in texts)
-    assert any("sandbox_status_reason: alive" in text for text in texts)
+    runtime_context = _sandbox_runtime_context_text(stub.last_payload["messages"])
+    assert "sandbox_session_alive: true" in runtime_context
+    assert 'sandbox_available_files: ["campaign.csv"]' in runtime_context
+    assert "sandbox_conversation_files: []" in runtime_context
+    assert 'sandbox_mount_ready_files: ["campaign.csv"]' in runtime_context
+    assert "sandbox_status_reason: alive" in runtime_context
 
 
 def test_stream_injects_stale_status_when_ttl_expired(monkeypatch):
@@ -835,9 +845,12 @@ def test_stream_injects_stale_status_when_ttl_expired(monkeypatch):
     assert response.status_code == 200
 
     assert stub.last_payload is not None
-    texts = _payload_message_texts(stub.last_payload["messages"])
-    assert any("sandbox_session_alive: false" in text for text in texts)
-    assert any("sandbox_status_reason: ttl_expired" in text for text in texts)
+    runtime_context = _sandbox_runtime_context_text(stub.last_payload["messages"])
+    assert "sandbox_session_alive: false" in runtime_context
+    assert "sandbox_available_files: []" in runtime_context
+    assert "sandbox_conversation_files: []" in runtime_context
+    assert "sandbox_mount_ready_files: []" in runtime_context
+    assert "sandbox_status_reason: ttl_expired" in runtime_context
 
 
 def test_stream_injects_status_when_container_missing(monkeypatch):
@@ -861,9 +874,41 @@ def test_stream_injects_status_when_container_missing(monkeypatch):
     assert response.status_code == 200
 
     assert stub.last_payload is not None
-    texts = _payload_message_texts(stub.last_payload["messages"])
-    assert any("sandbox_session_alive: false" in text for text in texts)
-    assert any("sandbox_status_reason: container_not_running" in text for text in texts)
+    runtime_context = _sandbox_runtime_context_text(stub.last_payload["messages"])
+    assert "sandbox_session_alive: false" in runtime_context
+    assert "sandbox_available_files: []" in runtime_context
+    assert "sandbox_conversation_files: []" in runtime_context
+    assert "sandbox_mount_ready_files: []" in runtime_context
+    assert "sandbox_status_reason: container_not_running" in runtime_context
+
+
+def test_stream_injects_mount_ready_files_from_conversation_when_no_live_session(monkeypatch):
+    store = _patch_memory_store(monkeypatch)
+    stub = _patch_agent(monkeypatch)
+    uploaded = _fake_uploaded_attachment(str(uuid4()))
+    uploaded.filename = "q1_metrics.csv"
+
+    import asyncio
+
+    asyncio.run(store.save_uploaded_attachments(None, [uploaded]))
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/agent/stream",
+        json={
+            "message": "Analyze the file",
+            "attachment_ids": [uploaded.id],
+        },
+    )
+    assert response.status_code == 200
+
+    assert stub.last_payload is not None
+    runtime_context = _sandbox_runtime_context_text(stub.last_payload["messages"])
+    assert "sandbox_session_alive: false" in runtime_context
+    assert "sandbox_status_reason: no_session" in runtime_context
+    assert "sandbox_available_files: []" in runtime_context
+    assert 'sandbox_conversation_files: ["q1_metrics.csv"]' in runtime_context
+    assert 'sandbox_mount_ready_files: ["q1_metrics.csv"]' in runtime_context
 
 
 def test_stream_persists_reasoning_kind_in_interleaved_order(monkeypatch):

@@ -1,20 +1,25 @@
 RUN_PYTHON_CODE_TOOL_DESCRIPTION = """
-Run Python code in an isolated sandbox for data analysis and plotting.
-Use this tool for attachment analysis requests; do not give Python for the user to run manually.
-Sandbox globals: INPUT_DIR=/workspace/input, OUTPUT_DIR=/workspace/output, ATTACHMENTS, load_dataframe(path, **kwargs).
-Attachment filenames in sandbox usually match attachment filenames (e.g. data.csv -> /workspace/input/data.csv).
-If duplicate names exist, sandbox may assign prefixed fallback names like 01_data.csv to avoid collisions.
-The sandbox process writes artifacts from /workspace/output (its working directory). Only write plot files in here and no json or csv outputs unless explicitly asked by user.
-The tool mounts all attachments linked to the current conversation automatically.
-When writing Python, choose paths from attached filenames and use load_dataframe(path, **kwargs).
-load_dataframe handles csv/json/excel/txt/text-like files and common encodings (utf-8, utf-8-sig, utf-16, latin-1) with kwargs passthrough.
-For plots, call plt.savefig('plot.png') or save files under OUTPUT_DIR so artifacts are returned.
-If sandbox session is not alive, prior variables/functions are gone; write idempotent code that can run in a fresh session.
-If sandbox session is alive, you may reuse previously defined variables/functions.
-For file analysis tasks, execute code first, then use computed results to provide insights and next steps.
-Prefer combining related charts into one figure with subplots when possible.
-Do not use any external or environment-specific plotting styles, themes, or style presets (e.g., plt.style.use(...), seaborn style names, custom .mplstyle files, URLs).
-Use only default matplotlib/seaborn behavior and standard, in-scope packages and APIs available in this sandbox.
-Available libraries include pandas, matplotlib, seaborn, numpy and openpyxl.
-Args: code, description (optional).
+Run Python in an isolated sandbox for data analysis and plotting. Use this tool for attachment analysis; do not provide Python code for the user to execute manually.
+
+Sandbox environment:
+INPUT_DIR=/workspace/input
+OUTPUT_DIR=/workspace/output
+ATTACHMENTS
+load_dataframe(path, **kwargs)
+
+Attachments are automatically mounted. Filenames usually match their original names (e.g., data.csv → /workspace/input/data.csv). If duplicates exist, prefixed names such as 01_data.csv may be assigned. Always select paths from available attachment filenames and use load_dataframe for csv/json/excel/txt files with encoding handled automatically.
+
+Session behavior:
+If the sandbox session is alive, variables and imports persist between user messages. Do not re-import or redefine objects unless necessary. If the session is restarted, previous state is lost and code must run cleanly in a fresh environment.
+
+Code rules:
+Do not write comments.
+Write outputs only to OUTPUT_DIR.
+Save plots using plt.savefig('plot.png') or under OUTPUT_DIR.
+Do not generate csv/json files unless explicitly requested.
+Execute analysis first, then use computed results to provide insights.
+Prefer combining related charts into a single figure with subplots.
+Do not apply external or custom matplotlib/seaborn styles. Use only default behavior and available libraries (pandas, numpy, matplotlib, seaborn, openpyxl).
+
+Arguments: code (required), description (optional).
 """.strip()
