@@ -229,6 +229,16 @@ def resolve_agent_tools(tool_overrides: Mapping[str, bool] | None = None) -> lis
     return tools
 
 
+def is_tool_group_enabled(
+    group_key: str,
+    tool_overrides: Mapping[str, bool] | None = None,
+) -> bool:
+    for group in resolve_tool_groups(tool_overrides):
+        if group.key == group_key:
+            return group.enabled
+    return False
+
+
 def build_agent_runtime(model: Any, *, system_prompt: str, tools: list[Any]):
     return create_agent(
         model=model,
