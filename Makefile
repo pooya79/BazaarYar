@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations seed-conversations prod-build prod prod-down prod-logs
+.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations seed-conversations prod-build prod-up-core prod-migrate prod-up-edge prod prod-down prod-logs
 
 ARGS ?=
 PROD_ENV_FILE ?= .env.prod
@@ -78,9 +78,20 @@ seed-conversations:
 prod-build:
 	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml --profile build build sandbox server web 
 
+prod-up-core:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml up -d db phoenix server
+
+prod-migrate:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml exec -T server alembic -c server/db/alembic.ini upgrade head
+
+prod-up-edge:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml up -d web nginx
+
 prod:
 	$(MAKE) prod-build
-	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml up -d db phoenix migrate server web nginx
+	$(MAKE) prod-up-core
+	$(MAKE) prod-migrate
+	$(MAKE) prod-up-edge
 
 prod-down:
 	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml down

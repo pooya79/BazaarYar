@@ -30,26 +30,49 @@ cp .env.prod.sample .env.prod
 - App serving port:
   - `APP_PORT` (host port for Nginx, defaults to `80`)
 
-### 4. Build and start the full production stack
+### 4. Build production images
 ```bash
-make prod
+make prod-build
+```
+
+### 5. Start core services
+```bash
+make prod-up-core
 ```
 
 This starts:
 - `db` (Postgres)
 - `phoenix`
-- `migrate` (Alembic one-shot migration)
 - `server` (FastAPI)
+
+### 6. Run database migrations (inside existing `server` container)
+```bash
+make prod-migrate
+```
+
+### 7. Start public-facing services
+```bash
+make prod-up-edge
+```
+
+This starts:
 - `web` (Next.js)
 - `nginx` (public reverse proxy)
 
-### 5. Access the app
+### 8. One-command alternative
+```bash
+make prod
+```
+
+`make prod` runs the same sequence as steps 4-7.
+
+### 9. Access the app
 - App: `http://localhost:<APP_PORT>`
 - API docs: `http://localhost:<APP_PORT>/api/docs`
 - Health: `http://localhost:<APP_PORT>/health`
 - Example (default): `http://localhost:80`
 
-### 6. Useful operations
+### 10. Useful operations
 - Stop prod stack:
 ```bash
 make prod-down
