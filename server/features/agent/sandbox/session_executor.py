@@ -30,6 +30,7 @@ from server.features.agent.sandbox.sandbox_schema import (
     SandboxInputFileMapping,
     SandboxRunnerArtifact,
 )
+from server.features.agent.sandbox.workspace_paths import ensure_workspace_subdir
 
 _STATUS_CALLBACK = Callable[[str, str], Awaitable[None]]
 _CONTAINER_NAME_PREFIX = "bazaaryar-sandbox-session-"
@@ -68,11 +69,7 @@ class SandboxSessionStatus:
 
 
 def _sandbox_sessions_root() -> Path:
-    settings = get_settings()
-    root = Path(settings.sandbox_workspace_root) / "sessions"
-    root.mkdir(parents=True, exist_ok=True)
-    root.chmod(0o777)
-    return root
+    return ensure_workspace_subdir("sessions")
 
 
 def _session_workspace_path(session_id: UUID) -> Path:

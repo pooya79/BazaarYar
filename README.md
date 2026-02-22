@@ -58,3 +58,8 @@ make prod-down
 ```bash
 make prod-logs
 ```
+
+### Sandbox Workspace Troubleshooting
+- If you run both prod and dev on the same host, `SANDBOX_WORKSPACE_ROOT` can become root-owned (for example `/tmp/bazaaryar-sandbox`), which can break local dev sandbox writes.
+- In non-production environments, the server now falls back to `/tmp/bazaaryar-sandbox-<uid>` when the configured root is not writable.
+- In production, the server fails fast. Set `SANDBOX_WORKSPACE_ROOT` to a writable absolute host path and ensure ownership/permissions are correct.

@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:25-alpine
+ARG NODE_IMAGE=node:22-alpine
 FROM ${NODE_IMAGE} AS builder
 
 WORKDIR /app/web
@@ -19,7 +19,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build \
     && pnpm prune --prod
 
-ARG NODE_IMAGE=node:25-alpine
+ARG NODE_IMAGE=node:22-alpine
 FROM ${NODE_IMAGE} AS runtime
 
 WORKDIR /app/web

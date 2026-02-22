@@ -84,7 +84,7 @@ services:
       context: ..
       dockerfile: infra/docker/web.Dockerfile
       args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:25-alpine}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
         NEXT_PUBLIC_PHOENIX_URL: ${NEXT_PUBLIC_PHOENIX_URL:-}
     container_name: bazaaryar-web-prod

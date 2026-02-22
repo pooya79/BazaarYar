@@ -18,6 +18,7 @@ from server.features.agent.sandbox.sandbox_schema import (
     SandboxInputFileMapping,
     SandboxRunnerArtifact,
 )
+from server.features.agent.sandbox.workspace_paths import ensure_workspace_subdir
 from server.core.config import get_settings
 
 _STATUS_CALLBACK = Callable[[str, str], Awaitable[None]]
@@ -25,11 +26,7 @@ _STDERR_TAIL_LIMIT = 8_000
 
 
 def _sandbox_runs_root() -> Path:
-    settings = get_settings()
-    root = Path(settings.sandbox_workspace_root) / "runs"
-    root.mkdir(parents=True, exist_ok=True)
-    root.chmod(0o777)
-    return root
+    return ensure_workspace_subdir("runs")
 
 
 def _trim_tail(value: str, *, limit: int = _STDERR_TAIL_LIMIT) -> str:
