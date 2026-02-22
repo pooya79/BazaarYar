@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.config import get_settings
 from server.db.models import ConversationSandboxSession
+from server.features.attachments import resolve_storage_path
 from server.features.agent.sandbox.filename_utils import (
     allocate_sandbox_filename,
     next_sandbox_prefix_start,
@@ -29,7 +30,6 @@ from server.features.agent.sandbox.sandbox_schema import (
     SandboxInputFileMapping,
     SandboxRunnerArtifact,
 )
-from server.features.attachments import resolve_storage_path
 
 _STATUS_CALLBACK = Callable[[str, str], Awaitable[None]]
 _CONTAINER_NAME_PREFIX = "bazaaryar-sandbox-session-"
@@ -68,8 +68,10 @@ class SandboxSessionStatus:
 
 
 def _sandbox_sessions_root() -> Path:
-    root = resolve_storage_path("server/storage/sandbox_sessions")
+    settings = get_settings()
+    root = Path(settings.sandbox_workspace_root) / "sessions"
     root.mkdir(parents=True, exist_ok=True)
+    root.chmod(0o777)
     return root
 
 
@@ -334,7 +336,7 @@ def _validate_and_load_session_artifacts(
 
 async def _cleanup_runtime_resource(resource: _SessionResource) -> None:
     await _docker_remove_container(resource.container_name)
-    workspace_dir = resolve_storage_path(resource.workspace_path)
+    workspace_dir = Path(resource.workspace_path)
     shutil.rmtree(workspace_dir, ignore_errors=True)
 
 
@@ -405,7 +407,7 @@ async def get_conversation_sandbox_status(
             available_files=[],
         )
 
-    workspace_dir = resolve_storage_path(sandbox_session.workspace_path)
+    workspace_dir = Path(sandbox_session.workspace_path)
     if not workspace_dir.exists() or not workspace_dir.is_dir():
         return SandboxSessionStatus(
             alive=False,
@@ -436,6 +438,36 @@ async def get_conversation_sandbox_status(
     )
 
 
+async def sweep_all_sandbox_sessions(session: AsyncSession) -> dict[str, int]:
+    rows = list((await session.execute(select(ConversationSandboxSession))).scalars().all())
+    resources = [
+        _SessionResource(
+            id=row.id,
+            container_name=row.container_name,
+            workspace_path=row.workspace_path,
+        )
+        for row in rows
+    ]
+    for row in rows:
+        await session.delete(row)
+    if rows:
+        await session.commit()
+
+    cleanup_failures = 0
+    for resource in resources:
+        try:
+            await _cleanup_runtime_resource(resource)
+        except Exception:
+            cleanup_failures += 1
+
+    # Ensure any orphaned prefixed containers/workspaces are removed as well.
+    await cleanup_stale_sandbox_sessions(session)
+    return {
+        "deleted_sessions": len(resources),
+        "cleanup_failures": cleanup_failures,
+    }
+
+
 async def cleanup_stale_sandbox_sessions(session: AsyncSession) -> None:
     settings = get_settings()
     ttl_seconds = max(0, settings.sandbox_session_idle_ttl_seconds)
@@ -462,7 +494,7 @@ async def cleanup_stale_sandbox_sessions(session: AsyncSession) -> None:
         await _cleanup_runtime_resource(resource)
 
     known_workspace_paths = {
-        resolve_storage_path(path)
+        Path(str(path))
         for path in (
             await session.execute(select(ConversationSandboxSession.workspace_path))
         ).scalars()
@@ -583,7 +615,7 @@ async def _enqueue_request(
             await _cleanup_runtime_resource(stale_resource)
             continue
 
-        workspace_dir = resolve_storage_path(sandbox_session.workspace_path)
+        workspace_dir = Path(sandbox_session.workspace_path)
         _ensure_workspace_dirs(workspace_dir)
         await _ensure_session_container(
             workspace_dir=workspace_dir,

@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import quote_plus
 
-from pydantic import Field, PostgresDsn, computed_field
+from pydantic import Field, PostgresDsn, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     db_ssl_mode: str = Field(default="prefer", validation_alias="DB_SSL_MODE")
 
     database_url: PostgresDsn | None = Field(default=None, validation_alias="DATABASE_URL")
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     frontend_origins: str = Field(
         default="http://localhost:3000,http://127.0.0.1:3000",
@@ -118,6 +125,28 @@ class Settings(BaseSettings):
         default="docker",
         validation_alias="SANDBOX_DOCKER_BIN",
     )
+    sandbox_workspace_root: str = Field(
+        default="/tmp/bazaaryar-sandbox",
+        validation_alias="SANDBOX_WORKSPACE_ROOT",
+    )
+
+    @field_validator("sandbox_workspace_root", mode="before")
+    @classmethod
+    def _normalize_sandbox_workspace_root(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                raise ValueError("SANDBOX_WORKSPACE_ROOT must not be empty.")
+            return normalized
+        return value
+
+    @field_validator("sandbox_workspace_root")
+    @classmethod
+    def _validate_sandbox_workspace_root(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("SANDBOX_WORKSPACE_ROOT must be an absolute path.")
+        return value
+
     sandbox_max_runtime_seconds: int = Field(
         default=90,
         validation_alias="SANDBOX_MAX_RUNTIME_SECONDS",

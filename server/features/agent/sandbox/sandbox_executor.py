@@ -25,8 +25,10 @@ _STDERR_TAIL_LIMIT = 8_000
 
 
 def _sandbox_runs_root() -> Path:
-    root = resolve_storage_path("server/storage/sandbox_runs")
+    settings = get_settings()
+    root = Path(settings.sandbox_workspace_root) / "runs"
     root.mkdir(parents=True, exist_ok=True)
+    root.chmod(0o777)
     return root
 
 

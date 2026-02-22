@@ -8,7 +8,10 @@ from .api import api_router
 from .core.config import get_settings
 from .db.session import AsyncSessionLocal, async_engine
 from .features.agent.observability import configure_agent_observability
-from .features.agent.sandbox.session_executor import cleanup_stale_sandbox_sessions
+from .features.agent.sandbox.session_executor import (
+    cleanup_stale_sandbox_sessions,
+    sweep_all_sandbox_sessions,
+)
 
 settings = get_settings()
 
@@ -41,7 +44,7 @@ async def lifespan(_: FastAPI):
         await async_engine.dispose()
 
 
-app = FastAPI(title="BazaarYar API", docs_url="/api/docs", lifespan=lifespan)
+app = FastAPI(title="BazaarYar API", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
 app.include_router(api_router)
 
 app.add_middleware(
@@ -61,3 +64,10 @@ async def read_root() -> dict:
 @app.get("/health")
 async def health_check() -> dict:
     return {"healthy": True}
+
+
+@app.post("/api/sweep-sandbox")
+async def sweep_sandbox() -> dict:
+    async with AsyncSessionLocal() as session:
+        result = await sweep_all_sandbox_sessions(session)
+    return {"ok": True, **result}

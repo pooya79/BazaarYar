@@ -40,3 +40,35 @@ async def test_background_sweeper_runs_cleanup_without_python_calls(monkeypatch)
         await asyncio.sleep(0.05)
 
     assert calls
+
+
+@pytest.mark.asyncio
+async def test_sweep_sandbox_endpoint_calls_global_sweep(monkeypatch):
+    main = importlib.import_module("server.main")
+
+    class _FakeSessionCM:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, _exc_type, _exc, _tb):
+            return False
+
+    def _fake_session_local():
+        return _FakeSessionCM()
+
+    async def _fake_sweep_all(_session):
+        return {
+            "deleted_sessions": 3,
+            "cleanup_failures": 1,
+        }
+
+    monkeypatch.setattr(main, "AsyncSessionLocal", _fake_session_local)
+    monkeypatch.setattr(main, "sweep_all_sandbox_sessions", _fake_sweep_all)
+
+    payload = await main.sweep_sandbox()
+
+    assert payload == {
+        "ok": True,
+        "deleted_sessions": 3,
+        "cleanup_failures": 1,
+    }

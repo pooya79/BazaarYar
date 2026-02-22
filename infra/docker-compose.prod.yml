@@ -1,0 +1,133 @@
+services:
+  db:
+    image: postgres:18.1
+    container_name: bazaaryar-postgres-prod
+    env_file:
+      - ../.env.prod
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-bazaaryar} -d $${POSTGRES_DB:-bazaaryar_prod}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  phoenix:
+    image: arizephoenix/phoenix:${PHOENIX_TAG:-latest}
+    container_name: bazaaryar-phoenix-prod
+    env_file:
+      - ../.env.prod
+    environment:
+      PHOENIX_WORKING_DIR: ${PHOENIX_WORKING_DIR:-/mnt/data}
+    ports:
+      - "${PHOENIX_UI_PORT:-6006}:6006"
+    volumes:
+      - phoenix_data:${PHOENIX_WORKING_DIR:-/mnt/data}
+    restart: unless-stopped
+
+  sandbox:
+    image: ${SANDBOX_DOCKER_IMAGE:-bazaaryar-python-sandbox:latest}
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    profiles: ["build"]
+
+  server:
+    image: bazaaryar-server:latest
+    build:
+      context: ..
+      dockerfile: infra/docker/server.Dockerfile
+    container_name: bazaaryar-server-prod
+    env_file:
+      - ../.env.prod
+    volumes:
+      - server_uploads:/app/server/storage/uploads
+      - ${SANDBOX_WORKSPACE_ROOT:-/tmp/bazaaryar-sandbox}:${SANDBOX_WORKSPACE_ROOT:-/tmp/bazaaryar-sandbox}
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
+      phoenix:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  migrate:
+    image: bazaaryar-server:latest
+    container_name: bazaaryar-migrate-prod
+    env_file:
+      - ../.env.prod
+    command: ["alembic", "-c", "server/db/alembic.ini", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    image: bazaaryar-web:latest
+    build:
+      context: ..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:25-alpine}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+        NEXT_PUBLIC_PHOENIX_URL: ${NEXT_PUBLIC_PHOENIX_URL:-}
+    container_name: bazaaryar-web-prod
+    env_file:
+      - ../.env.prod
+    depends_on:
+      server:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: bazaaryar-nginx-prod
+    depends_on:
+      web:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  phoenix_data:
+  server_uploads:

@@ -9,7 +9,7 @@ const optionalUrlSchema = z.preprocess((value) => {
 }, z.url().optional());
 
 const envSchema = z.object({
-  NEXT_PUBLIC_API_BASE_URL: z.url(),
+  NEXT_PUBLIC_API_BASE_URL: optionalUrlSchema,
   NEXT_PUBLIC_PHOENIX_URL: optionalUrlSchema,
 });
 

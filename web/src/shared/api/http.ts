@@ -6,15 +6,17 @@ type HttpOptions = RequestInit & {
   forwardAuthHeader?: string | null;
 };
 
-const baseUrl = env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, "");
+const baseUrl = env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
 const jsonHeaders = {
   Accept: "application/json",
   "Content-Type": "application/json",
 };
 
-const buildUrl = (path: string) =>
-  `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
+const buildUrl = (path: string) => {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return baseUrl ? `${baseUrl}${normalizedPath}` : normalizedPath;
+};
 
 const normalizeError = (response: Response, payload: unknown): ApiError => {
   if (payload && typeof payload === "object" && "detail" in payload) {

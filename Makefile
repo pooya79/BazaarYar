@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 
-.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations seed-conversations
+.PHONY: install install-server install-web dev server test-server web infra infra-down db db-down phoenix phoenix-down db-migrate db-downgrade sandbox-image clear-dev-conversations seed-conversations prod-build prod prod-down prod-logs
 
 ARGS ?=
+PROD_ENV_FILE ?= .env.prod
 
 install: install-server install-web
 
@@ -73,3 +74,16 @@ seed-conversations:
 	# --yes: execute seeding
 	# --force: allow run outside dev-like DB targets
 	PYTHONPATH=. uv run --project server python scripts/seed_conversations.py $(ARGS)
+
+prod-build:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml --profile build build sandbox server web 
+
+prod:
+	$(MAKE) prod-build
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml up -d db phoenix migrate server web nginx
+
+prod-down:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml down
+
+prod-logs:
+	PROD_ENV_FILE=$(PROD_ENV_FILE) docker compose --env-file $(PROD_ENV_FILE) -f infra/docker-compose.prod.yml logs -f --tail 200
