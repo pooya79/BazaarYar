@@ -87,3 +87,5 @@ The agent platform is designed to support:
 - Agent model settings precedence: if `model_id` is provided on agent requests, resolve that card (and set it active); otherwise use active DB model card, then default DB model card, then env defaults from `server/core/config.py`.
 - Never commit real API keys to repo files. Settings read APIs should return masked key previews only (no full secret echo).
 - Conversation reports retrieval for agent memory is tool-driven (on demand), not auto-injected into every turn.
+- When any conversation report tool is enabled, extend the agent system prompt with conversation report guidance.
+- When `list_conversation_reports` or `get_conversation_report` is enabled, preload the newest 5 enabled reports (`id`, `title`, `preview_text`) into the system prompt; additional browsing should use `list_conversation_reports` pagination via `offset` (typically starting from `offset=5` after preload).
