@@ -48,7 +48,7 @@ async def test_list_and_get_report_tools_return_payload(monkeypatch):
     async def _fake_list_reports(_session, *, q, limit, offset, include_disabled):
         assert q == "launch"
         assert limit == 3
-        assert offset == 0
+        assert offset == 5
         assert include_disabled is False
         return [_summary(report_id)]
 
@@ -61,10 +61,12 @@ async def test_list_and_get_report_tools_return_payload(monkeypatch):
     monkeypatch.setattr(report_tools, "get_report", _fake_get_report)
 
     listed = await report_tools.list_conversation_reports.ainvoke(
-        {"query": "launch", "limit": 3}
+        {"query": "launch", "limit": 3, "offset": 5}
     )
     listed_payload = json.loads(listed)
     assert listed_payload["reports"][0]["id"] == report_id
+    assert listed_payload["provenance"]["offset"] == 5
+    assert listed_payload["provenance"]["next_offset"] == 6
 
     loaded = await report_tools.get_conversation_report.ainvoke(
         {"report_id": report_id}

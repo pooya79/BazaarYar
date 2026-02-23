@@ -430,12 +430,30 @@ def _patch_memory_store(monkeypatch):
             source="defaults",
         )
 
+    async def _fake_report_prompt_context(_session, *, tool_settings):
+        _ = tool_settings
+        return agents_api.ConversationReportPromptContext(
+            conversation_report_tools_enabled=False,
+            conversation_report_retrieval_enabled=False,
+            preloaded_reports=tuple(),
+        )
+
     monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
     monkeypatch.setattr(agents_api, "resolve_effective_company_profile", _fake_company_profile)
     monkeypatch.setattr(agent_router_api, "resolve_effective_company_profile", _fake_company_profile)
     monkeypatch.setattr(agents_api, "resolve_effective_tool_settings", _fake_tool_settings)
     monkeypatch.setattr(agent_router_api, "resolve_effective_tool_settings", _fake_tool_settings)
+    monkeypatch.setattr(
+        agents_api,
+        "resolve_conversation_report_prompt_context",
+        _fake_report_prompt_context,
+    )
+    monkeypatch.setattr(
+        agent_router_api,
+        "resolve_conversation_report_prompt_context",
+        _fake_report_prompt_context,
+    )
 
     app.dependency_overrides[get_db_session] = _override_db
     return store
@@ -522,6 +540,34 @@ def test_agent_non_stream_response(monkeypatch):
     assert data["tool_calls"][0]["name"] == "utc_time"
     assert data["tool_results"][0]["content"] == "2026-02-03T00:00:00Z"
     assert data["reasoning"][0].startswith("Checking")
+
+
+def test_agent_non_stream_resolves_report_prompt_context(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+    captured: dict[str, object] = {}
+
+    async def _fake_report_prompt_context(_session, *, tool_settings):
+        captured["called"] = True
+        captured["tool_overrides"] = dict(tool_settings.tool_overrides)
+        return agents_api.ConversationReportPromptContext(
+            conversation_report_tools_enabled=True,
+            conversation_report_retrieval_enabled=False,
+            preloaded_reports=tuple(),
+        )
+
+    monkeypatch.setattr(
+        agent_router_api,
+        "resolve_conversation_report_prompt_context",
+        _fake_report_prompt_context,
+    )
+
+    client = TestClient(app)
+    response = client.post("/api/agent", json={"message": "What time is it?"})
+
+    assert response.status_code == 200
+    assert captured["called"] is True
+    assert captured["tool_overrides"] == {}
 
 
 def test_agent_non_stream_uses_overridden_model_settings(monkeypatch):
@@ -625,6 +671,34 @@ def test_stream_model_id_validation_error_returns_422(monkeypatch):
 
     assert response.status_code == 422
     assert "Unknown model_id" in response.json()["detail"]
+
+
+def test_stream_resolves_report_prompt_context(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+    captured: dict[str, object] = {}
+
+    async def _fake_report_prompt_context(_session, *, tool_settings):
+        captured["called"] = True
+        captured["tool_overrides"] = dict(tool_settings.tool_overrides)
+        return agents_api.ConversationReportPromptContext(
+            conversation_report_tools_enabled=True,
+            conversation_report_retrieval_enabled=True,
+            preloaded_reports=tuple(),
+        )
+
+    monkeypatch.setattr(
+        agents_api,
+        "resolve_conversation_report_prompt_context",
+        _fake_report_prompt_context,
+    )
+
+    client = TestClient(app)
+    response = client.post("/api/agent/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    assert captured["called"] is True
+    assert captured["tool_overrides"] == {}
 
 
 def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatch):

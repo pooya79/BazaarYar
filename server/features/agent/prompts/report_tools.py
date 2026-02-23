@@ -1,6 +1,7 @@
 LIST_CONVERSATION_REPORTS_TOOL_DESCRIPTION = """
 List archived conversation reports that are enabled for agent retrieval.
 Use query to find relevant prior strategy/analysis summaries.
+Use offset to paginate and continue browsing older reports.
 """.strip()
 
 GET_CONVERSATION_REPORT_TOOL_DESCRIPTION = """

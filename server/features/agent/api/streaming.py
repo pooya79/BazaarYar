@@ -42,7 +42,12 @@ from server.features.agent.schemas import (
     encode_sse,
 )
 from server.features.agent.runtime import is_tool_group_enabled
-from server.features.agent.service import build_agent, split_ai_content
+from server.features.agent.service import (
+    ConversationReportPromptContext,
+    build_agent,
+    resolve_conversation_report_prompt_context,
+    split_ai_content,
+)
 from server.features.attachments import (
     StoredAttachment,
     load_attachments_for_ids,
@@ -228,6 +233,10 @@ async def stream_agent_response(
     settings = get_settings()
     company_profile = await resolve_effective_company_profile(session)
     tool_settings = await resolve_effective_tool_settings(session)
+    report_prompt_context = await resolve_conversation_report_prompt_context(
+        session,
+        tool_settings=tool_settings,
+    )
     context_messages = await build_context_window_for_model(
         session,
         conversation_id=conversation.id,
@@ -342,7 +351,12 @@ async def stream_agent_response(
 
         async def _producer() -> None:
             nonlocal producer_error, streamed_text_buffer
-            agent = get_agent(model_settings, company_profile, tool_settings)
+            agent = get_agent(
+                model_settings,
+                company_profile,
+                tool_settings,
+                report_prompt_context=report_prompt_context,
+            )
             final_ai: AIMessage | None = None
             request_context = AgentRequestContext(
                 latest_user_message=user_message,
@@ -562,5 +576,11 @@ def get_agent(
     model_settings: ModelSettingsResolved,
     company_profile: CompanyProfileResolved,
     tool_settings: ToolSettingsResolved,
+    report_prompt_context: ConversationReportPromptContext | None = None,
 ):
-    return build_agent(model_settings, company_profile, tool_settings)
+    return build_agent(
+        model_settings,
+        company_profile,
+        tool_settings,
+        report_prompt_context=report_prompt_context,
+    )

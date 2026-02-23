@@ -43,7 +43,7 @@ Continuity:
   """.strip()
 
 PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX = """
-Python Code Runner Policy:
+Python Code Runner Guidance:
 
 Use run_python_code whenever:
 
@@ -78,6 +78,36 @@ Interpretation rules:
 * Separate descriptive analysis from strategic recommendations.
   """.strip()
 
+CONVERSATION_REPORT_TOOLS_SYSTEM_PROMPT_APPENDIX = """
+Conversation Report Tools Guidance:
+
+* Use conversation report tools when prior saved strategy context is relevant.
+* Prefer preloaded report summaries first, then call list_conversation_reports for additional entries.
+* Use get_conversation_report(report_id) to load full details for a specific report.
+* Use create_conversation_report only when the user explicitly asks to save memory for future sessions.
+  """.strip()
+
+
+def _conversation_report_prefetch_section(items: list[dict[str, str]]) -> str:
+    def _single_line(value: str) -> str:
+        return " ".join(value.split())
+
+    lines = [
+        "Conversation Reports Snapshot (enabled reports, newest-first by created_at):",
+    ]
+    if not items:
+        lines.append("* No enabled conversation reports are currently available.")
+    else:
+        for index, item in enumerate(items, start=1):
+            report_id = _single_line(item.get("id", "").strip()) or "unknown"
+            title = _single_line(item.get("title", "").strip()) or "(untitled)"
+            preview = _single_line(item.get("preview_text", "").strip()) or "(no preview)"
+            lines.append(f"{index}. id={report_id} | title={title} | preview={preview}")
+    lines.append(
+        "To browse beyond these preloaded entries, call list_conversation_reports with offset=5 or larger."
+    )
+    return "\n".join(lines)
+
 
 def build_agent_system_prompt(
     *,
@@ -85,6 +115,9 @@ def build_agent_system_prompt(
     company_description: str,
     company_enabled: bool,
     python_code_enabled: bool = False,
+    conversation_report_tools_enabled: bool = False,
+    conversation_report_retrieval_enabled: bool = False,
+    conversation_report_prefetched_items: list[dict[str, str]] | None = None,
 ) -> str:
     sections = [BASE_AGENT_SYSTEM_PROMPT]
 
@@ -104,5 +137,15 @@ def build_agent_system_prompt(
 
     if python_code_enabled:
         sections.append(PYTHON_ENABLED_SYSTEM_PROMPT_APPENDIX)
+
+    if conversation_report_tools_enabled:
+        sections.append(CONVERSATION_REPORT_TOOLS_SYSTEM_PROMPT_APPENDIX)
+
+    if conversation_report_retrieval_enabled:
+        sections.append(
+            _conversation_report_prefetch_section(
+                list(conversation_report_prefetched_items or [])
+            )
+        )
 
     return "\n\n".join(sections)

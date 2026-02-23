@@ -20,15 +20,16 @@ def _dump(payload: Any) -> str:
 
 
 @tool(description=LIST_CONVERSATION_REPORTS_TOOL_DESCRIPTION)
-async def list_conversation_reports(query: str = "", limit: int = 5) -> str:
+async def list_conversation_reports(query: str = "", limit: int = 5, offset: int = 0) -> str:
     safe_limit = max(1, min(limit, 20))
+    safe_offset = max(0, offset)
     try:
         async with AsyncSessionLocal() as session:
             rows = await list_reports(
                 session,
                 q=query,
                 limit=safe_limit,
-                offset=0,
+                offset=safe_offset,
                 include_disabled=False,
             )
         return _dump(
@@ -38,6 +39,8 @@ async def list_conversation_reports(query: str = "", limit: int = 5) -> str:
                     "tool": "list_conversation_reports",
                     "query": query,
                     "limit": safe_limit,
+                    "offset": safe_offset,
+                    "next_offset": safe_offset + len(rows),
                     "enabled_only": True,
                 },
             }
@@ -46,7 +49,12 @@ async def list_conversation_reports(query: str = "", limit: int = 5) -> str:
         return _dump(
             {
                 "error": str(exc),
-                "provenance": {"tool": "list_conversation_reports"},
+                "provenance": {
+                    "tool": "list_conversation_reports",
+                    "query": query,
+                    "limit": safe_limit,
+                    "offset": safe_offset,
+                },
             }
         )
 

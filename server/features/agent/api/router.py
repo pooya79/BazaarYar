@@ -12,7 +12,10 @@ from server.features.agent.api import streaming
 from server.features.agent.schemas import stream_event_schema
 from server.features.agent.sandbox.event_bus import AgentRequestContext, bind_request_context
 from server.features.agent.sandbox.session_executor import reset_conversation_sandbox
-from server.features.agent.service import extract_trace
+from server.features.agent.service import (
+    extract_trace,
+    resolve_conversation_report_prompt_context,
+)
 from server.features.settings.service import (
     resolve_effective_company_profile,
     resolve_effective_model_settings,
@@ -43,7 +46,16 @@ async def run_agent(
     )
     company_profile = await resolve_effective_company_profile(session)
     tool_settings = await resolve_effective_tool_settings(session)
-    agent = streaming.get_agent(model_settings, company_profile, tool_settings)
+    report_prompt_context = await resolve_conversation_report_prompt_context(
+        session,
+        tool_settings=tool_settings,
+    )
+    agent = streaming.get_agent(
+        model_settings,
+        company_profile,
+        tool_settings,
+        report_prompt_context=report_prompt_context,
+    )
     request_context = AgentRequestContext(
         latest_user_message=(payload.message or "").strip(),
         latest_user_attachment_ids=tuple(
