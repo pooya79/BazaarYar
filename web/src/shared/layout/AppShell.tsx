@@ -27,6 +27,7 @@ import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { ChatHeader } from "./ChatHeader";
 import { ChatSidebar } from "./ChatSidebar";
+import { ModelCardsProvider } from "./ModelCardsContext";
 
 type AppShellProps = {
   children: ReactNode;
@@ -351,63 +352,65 @@ export function AppShell({ children }: AppShellProps) {
   };
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--color-marketing-accent-soft),transparent_42%)]" />
-      <button
-        type="button"
-        aria-label="Close sidebar"
-        className={cn(
-          "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
-          sidebarOpen ? "block" : "hidden",
-        )}
-        onClick={() => setSidebarOpen(false)}
-      />
+    <ModelCardsProvider>
+      <div className="relative flex h-screen overflow-hidden bg-marketing-bg font-sans text-marketing-text-primary">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,var(--color-marketing-accent-soft),transparent_42%)]" />
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className={cn(
+            "fixed inset-0 z-[99] bg-marketing-overlay backdrop-blur-[4px] md:hidden",
+            sidebarOpen ? "block" : "hidden",
+          )}
+          onClick={() => setSidebarOpen(false)}
+        />
 
-      <ChatSidebar
-        isOpen={sidebarOpen}
-        chatsOpen={chatsOpen}
-        onToggleChats={() => setChatsOpen((prev) => !prev)}
-        onNewChat={handleNewChat}
-        chatItems={chatItems}
-        activeChatId={activeChatId}
-        onChatSelect={handleChatSelect}
-        onChatAction={handleChatAction}
-        chatMenuOpenId={chatMenuOpenId}
-        onChatMenuOpenChange={setChatMenuOpenId}
-        hasMoreConversations={hasMoreConversations}
-        isLoadingInitialConversations={isLoadingInitialConversations}
-        isLoadingMoreConversations={isLoadingMoreConversations}
-        onLoadMoreConversations={loadMoreConversations}
-        tools={visibleTools}
-        librarySections={library}
-        activeTool={displayToolId}
-        onToolSelect={handleToolClick}
-        onOpenSettings={handleOpenSettings}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-        aria-expanded={sidebarOpen}
-        aria-controls={sidebarId}
-        className={cn(
-          "fixed top-1/2 z-[110] -translate-y-1/2 border-marketing-border bg-marketing-surface text-marketing-text-secondary shadow-marketing-soft transition-[left,transform,background-color,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
-          sidebarOpen ? "left-[280px] -translate-x-1/2" : "left-3",
-        )}
-        onClick={() => setSidebarOpen((prev) => !prev)}
-      >
-        {sidebarOpen ? (
-          <ChevronLeft className="size-4" aria-hidden="true" />
-        ) : (
-          <ChevronRight className="size-4" aria-hidden="true" />
-        )}
-      </Button>
+        <ChatSidebar
+          isOpen={sidebarOpen}
+          chatsOpen={chatsOpen}
+          onToggleChats={() => setChatsOpen((prev) => !prev)}
+          onNewChat={handleNewChat}
+          chatItems={chatItems}
+          activeChatId={activeChatId}
+          onChatSelect={handleChatSelect}
+          onChatAction={handleChatAction}
+          chatMenuOpenId={chatMenuOpenId}
+          onChatMenuOpenChange={setChatMenuOpenId}
+          hasMoreConversations={hasMoreConversations}
+          isLoadingInitialConversations={isLoadingInitialConversations}
+          isLoadingMoreConversations={isLoadingMoreConversations}
+          onLoadMoreConversations={loadMoreConversations}
+          tools={visibleTools}
+          librarySections={library}
+          activeTool={displayToolId}
+          onToolSelect={handleToolClick}
+          onOpenSettings={handleOpenSettings}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+          aria-expanded={sidebarOpen}
+          aria-controls={sidebarId}
+          className={cn(
+            "fixed top-1/2 z-[110] -translate-y-1/2 border-marketing-border bg-marketing-surface text-marketing-text-secondary shadow-marketing-soft transition-[left,transform,background-color,color] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-marketing-accent-medium hover:text-marketing-text-primary",
+            sidebarOpen ? "left-[280px] -translate-x-1/2" : "left-3",
+          )}
+          onClick={() => setSidebarOpen((prev) => !prev)}
+        >
+          {sidebarOpen ? (
+            <ChevronLeft className="size-4" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="size-4" aria-hidden="true" />
+          )}
+        </Button>
 
-      <main className="relative z-[1] flex flex-1 flex-col overflow-hidden bg-marketing-bg">
-        <ChatHeader pageTitle={pageTitle} PageIcon={PageIcon} />
-        {children}
-      </main>
-    </div>
+        <main className="relative z-[1] flex flex-1 flex-col overflow-hidden bg-marketing-bg">
+          <ChatHeader pageTitle={pageTitle} PageIcon={PageIcon} />
+          {children}
+        </main>
+      </div>
+    </ModelCardsProvider>
   );
 }

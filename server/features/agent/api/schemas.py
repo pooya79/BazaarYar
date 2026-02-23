@@ -15,6 +15,7 @@ class AgentRequest(BaseModel):
     history: list[ChatMessage] | None = None
     attachment_ids: list[str] | None = None
     conversation_id: str | None = None
+    model_id: str | None = None
 
 
 class AgentResponse(BaseModel):

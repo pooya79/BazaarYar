@@ -86,6 +86,7 @@ export type ContextWindow = {
 export type StreamAgentOptions = {
   message: string;
   conversationId?: string | null;
+  modelId?: string | null;
   history?: AgentChatMessage[];
   attachmentIds?: string[];
   signal?: AbortSignal;
@@ -413,6 +414,7 @@ export async function getAgentContextWindow(
 export async function streamAgent({
   message,
   conversationId,
+  modelId,
   history,
   attachmentIds,
   signal,
@@ -426,6 +428,7 @@ export async function streamAgent({
     body: JSON.stringify({
       message,
       conversation_id: conversationId,
+      model_id: modelId,
       history,
       attachment_ids: attachmentIds,
     }),

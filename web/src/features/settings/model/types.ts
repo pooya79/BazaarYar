@@ -1,9 +1,7 @@
-import type {
-  ModelSettingsResponse,
-  ReasoningEffort,
-} from "@/shared/api/schemas/settings";
+import type { ModelCard, ReasoningEffort } from "@/shared/api/schemas/settings";
 
-export type ModelSettingsDraft = {
+export type ModelCardDraft = {
+  displayName: string;
   modelName: string;
   baseUrl: string;
   temperature: string;
@@ -13,7 +11,8 @@ export type ModelSettingsDraft = {
   pendingClearKey: boolean;
 };
 
-export const emptySettingsDraft: ModelSettingsDraft = {
+export const emptyModelCardDraft: ModelCardDraft = {
+  displayName: "",
   modelName: "",
   baseUrl: "",
   temperature: "1",
@@ -23,15 +22,14 @@ export const emptySettingsDraft: ModelSettingsDraft = {
   pendingClearKey: false,
 };
 
-export function toSettingsDraft(
-  settings: ModelSettingsResponse,
-): ModelSettingsDraft {
+export function toModelCardDraft(card: ModelCard): ModelCardDraft {
   return {
-    modelName: settings.model_name,
-    baseUrl: settings.base_url,
-    temperature: String(settings.temperature),
-    reasoningEffort: settings.reasoning_effort,
-    reasoningEnabled: settings.reasoning_enabled,
+    displayName: card.display_name,
+    modelName: card.model_name,
+    baseUrl: card.base_url,
+    temperature: String(card.temperature),
+    reasoningEffort: card.reasoning_effort,
+    reasoningEnabled: card.reasoning_enabled,
     replacementApiKey: "",
     pendingClearKey: false,
   };

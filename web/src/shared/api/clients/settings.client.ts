@@ -4,12 +4,13 @@ import {
   type CompanyProfileResponse,
   companyProfilePatchInputSchema,
   companyProfileResponseSchema,
-  type ModelSettingsPatchInput,
-  type ModelSettingsResponse,
-  modelSettingsPatchInputSchema,
-  modelSettingsResponseSchema,
+  type ModelCardCreateInput,
+  type ModelCardPatchInput,
+  type ModelCardsResponse,
+  modelCardCreateInputSchema,
+  modelCardPatchInputSchema,
+  modelCardsResponseSchema,
   resetCompanyProfileResponseSchema,
-  resetModelSettingsResponseSchema,
   resetToolSettingsResponseSchema,
   type ToolSettingsPatchInput,
   type ToolSettingsResponse,
@@ -29,10 +30,10 @@ async function parsePayload(response: Response): Promise<unknown> {
   }
 }
 
-export async function getModelSettings(
+export async function getModelCards(
   signal?: AbortSignal,
-): Promise<ModelSettingsResponse> {
-  const response = await fetch(buildUrl("/api/settings/model"), {
+): Promise<ModelCardsResponse> {
+  const response = await fetch(buildUrl("/api/settings/models"), {
     method: "GET",
     signal,
   });
@@ -40,15 +41,36 @@ export async function getModelSettings(
   if (!response.ok) {
     throw normalizeError(response, payload);
   }
-  return modelSettingsResponseSchema.parse(payload);
+  return modelCardsResponseSchema.parse(payload);
 }
 
-export async function patchModelSettings(
-  body: ModelSettingsPatchInput,
+export async function createModelCard(
+  body: ModelCardCreateInput,
   signal?: AbortSignal,
-): Promise<ModelSettingsResponse> {
-  const normalizedBody = modelSettingsPatchInputSchema.parse(body);
-  const response = await fetch(buildUrl("/api/settings/model"), {
+): Promise<ModelCardsResponse> {
+  const normalizedBody = modelCardCreateInputSchema.parse(body);
+  const response = await fetch(buildUrl("/api/settings/models"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(normalizedBody),
+    signal,
+  });
+  const payload = await parsePayload(response);
+  if (!response.ok) {
+    throw normalizeError(response, payload);
+  }
+  return modelCardsResponseSchema.parse(payload);
+}
+
+export async function patchModelCard(
+  modelId: string,
+  body: ModelCardPatchInput,
+  signal?: AbortSignal,
+): Promise<ModelCardsResponse> {
+  const normalizedBody = modelCardPatchInputSchema.parse(body);
+  const response = await fetch(buildUrl(`/api/settings/models/${modelId}`), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -60,13 +82,14 @@ export async function patchModelSettings(
   if (!response.ok) {
     throw normalizeError(response, payload);
   }
-  return modelSettingsResponseSchema.parse(payload);
+  return modelCardsResponseSchema.parse(payload);
 }
 
-export async function resetModelSettings(
+export async function deleteModelCard(
+  modelId: string,
   signal?: AbortSignal,
-): Promise<boolean> {
-  const response = await fetch(buildUrl("/api/settings/model"), {
+): Promise<ModelCardsResponse> {
+  const response = await fetch(buildUrl(`/api/settings/models/${modelId}`), {
     method: "DELETE",
     signal,
   });
@@ -74,7 +97,43 @@ export async function resetModelSettings(
   if (!response.ok) {
     throw normalizeError(response, payload);
   }
-  return resetModelSettingsResponseSchema.parse(payload).reset;
+  return modelCardsResponseSchema.parse(payload);
+}
+
+export async function activateModelCard(
+  modelId: string,
+  signal?: AbortSignal,
+): Promise<ModelCardsResponse> {
+  const response = await fetch(
+    buildUrl(`/api/settings/models/${modelId}/activate`),
+    {
+      method: "POST",
+      signal,
+    },
+  );
+  const payload = await parsePayload(response);
+  if (!response.ok) {
+    throw normalizeError(response, payload);
+  }
+  return modelCardsResponseSchema.parse(payload);
+}
+
+export async function setDefaultModelCard(
+  modelId: string,
+  signal?: AbortSignal,
+): Promise<ModelCardsResponse> {
+  const response = await fetch(
+    buildUrl(`/api/settings/models/${modelId}/default`),
+    {
+      method: "POST",
+      signal,
+    },
+  );
+  const payload = await parsePayload(response);
+  if (!response.ok) {
+    throw normalizeError(response, payload);
+  }
+  return modelCardsResponseSchema.parse(payload);
 }
 
 export async function getCompanyProfile(

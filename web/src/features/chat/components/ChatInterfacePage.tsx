@@ -18,6 +18,7 @@ import { useToolSettings } from "@/features/chat/hooks/useToolSettings";
 import { quickActions } from "@/features/chat/model/constants";
 import type { AssistantTurn } from "@/features/chat/model/types";
 import { formatTime } from "@/features/chat/utils/chatViewUtils";
+import { useModelCards } from "@/shared/layout/ModelCardsContext";
 
 export function ChatInterfacePage() {
   const router = useRouter();
@@ -111,6 +112,7 @@ export function ChatInterfacePage() {
     save: saveToolSettings,
     discardChanges: discardToolChanges,
   } = useToolSettings();
+  const { selectedModelId } = useModelCards();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: route changes must cancel active streams.
   useEffect(() => {
@@ -170,6 +172,7 @@ export function ChatInterfacePage() {
       message: text,
       conversationId: activeChatId,
       attachmentIds: readyAttachments.map((item) => item.fileId),
+      modelId: selectedModelId,
     });
   };
 

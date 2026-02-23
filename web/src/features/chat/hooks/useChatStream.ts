@@ -26,6 +26,7 @@ type StartChatStreamParams = {
   message: string;
   conversationId: string | null;
   attachmentIds: string[];
+  modelId: string | null;
 };
 
 type StreamState = {
@@ -305,6 +306,7 @@ export function useChatStream({
       message,
       conversationId,
       attachmentIds,
+      modelId,
     }: StartChatStreamParams) => {
       abortStream();
 
@@ -318,6 +320,7 @@ export function useChatStream({
           message,
           conversationId,
           attachmentIds,
+          modelId,
           signal: abortController.signal,
           onEvent: (event) => {
             if (event.type === "conversation") {

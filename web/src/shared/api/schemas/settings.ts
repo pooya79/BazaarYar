@@ -1,15 +1,13 @@
 import { z } from "zod";
 
-export const modelSettingsSourceSchema = z.enum([
-  "database",
-  "environment_defaults",
-]);
 export const companyProfileSourceSchema = z.enum(["database", "defaults"]);
 export const toolSettingsSourceSchema = z.enum(["database", "defaults"]);
 
 export const reasoningEffortSchema = z.enum(["low", "medium", "high"]);
 
-export const modelSettingsResponseSchema = z.object({
+export const modelCardSchema = z.object({
+  id: z.string(),
+  display_name: z.string(),
   model_name: z.string(),
   base_url: z.string(),
   temperature: z.number().min(0).max(2),
@@ -17,23 +15,33 @@ export const modelSettingsResponseSchema = z.object({
   reasoning_enabled: z.boolean(),
   has_api_key: z.boolean(),
   api_key_preview: z.string().nullable().optional(),
-  source: modelSettingsSourceSchema,
+  is_default: z.boolean(),
+  is_active: z.boolean(),
 });
 
-export const modelSettingsPatchInputSchema = z
+export const modelCardsResponseSchema = z.object({
+  items: z.array(modelCardSchema),
+  active_model_id: z.string().nullable(),
+  default_model_id: z.string().nullable(),
+});
+
+export const modelCardCreateInputSchema = z
   .object({
-    model_name: z.string().optional(),
+    display_name: z.string().min(1).max(255),
+    model_name: z.string().min(1),
     api_key: z.string().optional(),
     base_url: z.string().optional(),
     temperature: z.number().min(0).max(2).optional(),
     reasoning_effort: reasoningEffortSchema.optional(),
     reasoning_enabled: z.boolean().optional(),
+    is_default: z.boolean().optional(),
+    is_active: z.boolean().optional(),
   })
   .strict();
 
-export const resetModelSettingsResponseSchema = z.object({
-  reset: z.boolean(),
-});
+export const modelCardPatchInputSchema = modelCardCreateInputSchema
+  .partial()
+  .strict();
 
 export const companyProfileResponseSchema = z.object({
   name: z.string(),
@@ -87,14 +95,13 @@ export const resetToolSettingsResponseSchema = z.object({
   reset: z.boolean(),
 });
 
-export type ModelSettingsSource = z.infer<typeof modelSettingsSourceSchema>;
 export type CompanyProfileSource = z.infer<typeof companyProfileSourceSchema>;
 export type ToolSettingsSource = z.infer<typeof toolSettingsSourceSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
-export type ModelSettingsResponse = z.infer<typeof modelSettingsResponseSchema>;
-export type ModelSettingsPatchInput = z.infer<
-  typeof modelSettingsPatchInputSchema
->;
+export type ModelCard = z.infer<typeof modelCardSchema>;
+export type ModelCardsResponse = z.infer<typeof modelCardsResponseSchema>;
+export type ModelCardCreateInput = z.infer<typeof modelCardCreateInputSchema>;
+export type ModelCardPatchInput = z.infer<typeof modelCardPatchInputSchema>;
 export type CompanyProfileResponse = z.infer<
   typeof companyProfileResponseSchema
 >;

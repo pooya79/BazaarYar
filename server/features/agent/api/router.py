@@ -36,7 +36,11 @@ async def run_agent(
     messages = await build_messages(payload, session)
     if not messages:
         raise HTTPException(status_code=400, detail="Provide message or history.")
-    model_settings = await resolve_effective_model_settings(session)
+    model_settings = await resolve_effective_model_settings(
+        session,
+        model_id=payload.model_id,
+        activate_selected=bool(payload.model_id),
+    )
     company_profile = await resolve_effective_company_profile(session)
     tool_settings = await resolve_effective_tool_settings(session)
     agent = streaming.get_agent(model_settings, company_profile, tool_settings)

@@ -404,7 +404,8 @@ def _patch_memory_store(monkeypatch):
     async def _override_db():
         yield _DummySession(store)
 
-    async def _fake_model_settings(_session):
+    async def _fake_model_settings(_session, *, model_id=None, activate_selected=False):
+        _ = (model_id, activate_selected)
         return ModelSettingsResolved(
             model_name="gpt-4.1-mini",
             api_key="test-key",
@@ -527,7 +528,8 @@ def test_agent_non_stream_uses_overridden_model_settings(monkeypatch):
     _patch_memory_store(monkeypatch)
     _patch_agent(monkeypatch)
 
-    async def _fake_model_settings(_session):
+    async def _fake_model_settings(_session, *, model_id=None, activate_selected=False):
+        _ = (model_id, activate_selected)
         return ModelSettingsResolved(
             model_name="openai/gpt-5-mini",
             api_key="test-key",
@@ -556,6 +558,73 @@ def test_agent_non_stream_uses_overridden_model_settings(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["model"] == "openai/gpt-5-mini"
+
+
+def test_agent_non_stream_passes_model_id_and_activates(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    async def _fake_model_settings(_session, *, model_id=None, activate_selected=False):
+        captured["model_id"] = model_id
+        captured["activate_selected"] = activate_selected
+        return ModelSettingsResolved(
+            model_name="openai/gpt-5-mini",
+            api_key="test-key",
+            base_url="",
+            temperature=1.0,
+            reasoning_effort="medium",
+            reasoning_enabled=True,
+            source="database",
+        )
+
+    monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+
+    client = TestClient(app)
+    model_id = "00000000-0000-0000-0000-000000000abc"
+    response = client.post(
+        "/api/agent",
+        json={"message": "What time is it?", "model_id": model_id},
+    )
+
+    assert response.status_code == 200
+    assert captured["model_id"] == model_id
+    assert captured["activate_selected"] is True
+
+
+def test_stream_model_id_validation_error_returns_422(monkeypatch):
+    _patch_memory_store(monkeypatch)
+    _patch_agent(monkeypatch)
+
+    async def _fake_model_settings(_session, *, model_id=None, activate_selected=False):
+        _ = activate_selected
+        if model_id:
+            raise HTTPException(status_code=422, detail=f"Unknown model_id '{model_id}'.")
+        return ModelSettingsResolved(
+            model_name="gpt-4.1-mini",
+            api_key="test-key",
+            base_url="",
+            temperature=1.0,
+            reasoning_effort="medium",
+            reasoning_enabled=True,
+            source="database",
+        )
+
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(agents_api, "resolve_effective_model_settings", _fake_model_settings)
+    monkeypatch.setattr(agent_router_api, "resolve_effective_model_settings", _fake_model_settings)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/agent/stream",
+        json={"message": "hello", "model_id": "missing"},
+    )
+
+    assert response.status_code == 422
+    assert "Unknown model_id" in response.json()["detail"]
 
 
 def test_upload_send_stream_reload_preserves_messages_and_attachments(monkeypatch):

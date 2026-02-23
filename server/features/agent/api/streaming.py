@@ -187,6 +187,12 @@ async def stream_agent_response(
     if not user_message and not attachment_ids:
         raise HTTPException(status_code=400, detail="Provide message or attachments.")
 
+    model_settings = await resolve_effective_model_settings(
+        session,
+        model_id=payload.model_id,
+        activate_selected=bool(payload.model_id),
+    )
+
     try:
         if payload.conversation_id:
             conversation_id = parse_uuid(payload.conversation_id, field_name="conversation_id")
@@ -220,7 +226,6 @@ async def stream_agent_response(
     from server.core.config import get_settings
 
     settings = get_settings()
-    model_settings = await resolve_effective_model_settings(session)
     company_profile = await resolve_effective_company_profile(session)
     tool_settings = await resolve_effective_tool_settings(session)
     context_messages = await build_context_window_for_model(

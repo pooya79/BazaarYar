@@ -36,7 +36,9 @@ class ToolSettingsResolved:
     source: ToolSettingsSource
 
 
-class ModelSettingsResponse(BaseModel):
+class ModelCardResponse(BaseModel):
+    id: str
+    display_name: str
     model_name: str
     base_url: str
     temperature: float
@@ -44,7 +46,8 @@ class ModelSettingsResponse(BaseModel):
     reasoning_enabled: bool
     has_api_key: bool
     api_key_preview: str | None
-    source: ModelSettingsSource
+    is_default: bool
+    is_active: bool
 
 
 class CompanyProfileResponse(BaseModel):
@@ -77,15 +80,38 @@ class ToolSettingsResponse(BaseModel):
     source: ToolSettingsSource
 
 
-class ModelSettingsPatch(BaseModel):
+class ModelCardsResponse(BaseModel):
+    items: list[ModelCardResponse]
+    active_model_id: str | None
+    default_model_id: str | None
+
+
+class ModelCardCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    display_name: str = Field(min_length=1, max_length=255)
+    model_name: str = Field(min_length=1, max_length=255)
+    api_key: str | None = None
+    base_url: str | None = None
+    temperature: float = Field(default=1.0, ge=0.0, le=2.0)
+    reasoning_effort: ReasoningEffort = "medium"
+    reasoning_enabled: bool = True
+    is_default: bool = False
+    is_active: bool = False
+
+
+class ModelCardPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, max_length=255)
     model_name: str | None = None
     api_key: str | None = None
     base_url: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     reasoning_effort: ReasoningEffort | None = None
     reasoning_enabled: bool | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
 
 
 class CompanyProfilePatch(BaseModel):

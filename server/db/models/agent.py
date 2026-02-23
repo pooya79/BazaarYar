@@ -3,7 +3,19 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    Index,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from server.db.base import Base
@@ -12,25 +24,42 @@ from server.db.base import Base
 class AgentModelSettings(Base):
     __tablename__ = "agent_model_settings"
     __table_args__ = (
-        UniqueConstraint("singleton_key", name="uq_agent_model_settings_singleton_key"),
-        CheckConstraint("singleton_key = 'global'", name="ck_agent_model_settings_singleton_key_global"),
         CheckConstraint("temperature >= 0 AND temperature <= 2", name="ck_agent_model_settings_temperature"),
         CheckConstraint(
             "reasoning_effort IN ('low', 'medium', 'high')",
             name="ck_agent_model_settings_reasoning_effort",
         ),
+        Index(
+            "uq_agent_model_settings_default_true",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+        Index(
+            "uq_agent_model_settings_active_true",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    singleton_key: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default="global",
-        server_default="global",
-    )
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
     api_key: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     base_url: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
     temperature: Mapped[float] = mapped_column(
         Float,
         nullable=False,
