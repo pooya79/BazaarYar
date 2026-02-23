@@ -1,5 +1,6 @@
 import {
   Activity,
+  BookOpen,
   Building2,
   Calendar,
   FileText,
@@ -26,6 +27,11 @@ export const library: LibrarySection[] = [
         id: "conversation-reports",
         label: "Conversation Reports",
         icon: FileText,
+      },
+      {
+        id: "prompt-library",
+        label: "Prompt Library",
+        icon: BookOpen,
       },
     ],
   },

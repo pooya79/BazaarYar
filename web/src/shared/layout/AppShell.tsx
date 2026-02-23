@@ -59,7 +59,8 @@ export function AppShell({ children }: AppShellProps) {
     [],
   );
 
-  const isReportsRoute = pathname.startsWith("/reports");
+  const isPromptLibraryRoute = pathname.startsWith("/reports/prompts");
+  const isReportsRoute = pathname === "/reports";
   const isModelSettingsRoute = pathname.startsWith("/settings/model");
   const isCompanySettingsRoute = pathname.startsWith("/settings/company");
   const isSettingsRoute = pathname.startsWith("/settings");
@@ -74,9 +75,11 @@ export function AppShell({ children }: AppShellProps) {
 
   const displayToolId = isCompanySettingsRoute
     ? "company-profile"
-    : isReportsRoute
-      ? "conversation-reports"
-      : activeTool;
+    : isPromptLibraryRoute
+      ? "prompt-library"
+      : isReportsRoute
+        ? "conversation-reports"
+        : activeTool;
 
   const { pageTitle, pageIcon: PageIcon } = useMemo(() => {
     if (isModelSettingsRoute) {
@@ -214,14 +217,20 @@ export function AppShell({ children }: AppShellProps) {
   }, []);
 
   useEffect(() => {
+    if (isPromptLibraryRoute) {
+      setActiveTool("prompt-library");
+      return;
+    }
     if (isReportsRoute) {
       setActiveTool("conversation-reports");
       return;
     }
     setActiveTool((current) =>
-      current === "conversation-reports" ? "assistant" : current,
+      current === "conversation-reports" || current === "prompt-library"
+        ? "assistant"
+        : current,
     );
-  }, [isReportsRoute]);
+  }, [isPromptLibraryRoute, isReportsRoute]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -263,9 +272,11 @@ export function AppShell({ children }: AppShellProps) {
     setChatMenuOpenId(null);
     if (toolId === "conversation-reports") {
       router.push("/reports");
+    } else if (toolId === "prompt-library") {
+      router.push("/reports/prompts");
     } else if (toolId === "company-profile") {
       router.push("/settings/company");
-    } else if (isReportsRoute || isSettingsRoute) {
+    } else if (isReportsRoute || isPromptLibraryRoute || isSettingsRoute) {
       router.push("/");
     }
     closeSidebarOnMobile();

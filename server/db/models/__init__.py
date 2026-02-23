@@ -1,6 +1,7 @@
 from .agent import AgentCompanyProfile, AgentModelSettings, AgentToolSettings
 from .attachments import Attachment
 from .chat import Conversation, ConversationSandboxSession, Message, MessageAttachment
+from .prompts import PromptTemplate
 from .reports import ConversationReport
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "Attachment",
     "Conversation",
     "ConversationSandboxSession",
+    "PromptTemplate",
     "ConversationReport",
     "Message",
     "MessageAttachment",

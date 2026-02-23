@@ -20,6 +20,13 @@ export type PendingAttachment = {
   error?: string;
 };
 
+export type PromptSuggestion = {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+};
+
 type ChatInputProps = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
@@ -34,6 +41,10 @@ type ChatInputProps = {
   onRemoveAttachment: (attachmentId: string) => void;
   onOpenToolSettings: () => void;
   toolSettingsBusy: boolean;
+  promptSuggestions: PromptSuggestion[];
+  activePromptSuggestionIndex: number;
+  onPromptSuggestionHover: (index: number) => void;
+  onPromptSuggestionSelect: (index: number) => void;
 };
 
 function formatBytes(size: number) {
@@ -56,6 +67,10 @@ export function ChatInput({
   onRemoveAttachment,
   onOpenToolSettings,
   toolSettingsBusy,
+  promptSuggestions,
+  activePromptSuggestionIndex,
+  onPromptSuggestionHover,
+  onPromptSuggestionSelect,
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,6 +85,47 @@ export function ChatInput({
   return (
     <div className="border-t border-marketing-border bg-marketing-surface-translucent px-6 py-4 backdrop-blur-[12px] md:px-10 md:py-6">
       <div className="mx-auto max-w-[800px]">
+        {promptSuggestions.length > 0 ? (
+          <div className="mb-3 overflow-hidden rounded-lg border border-marketing-border bg-marketing-surface shadow-marketing-soft">
+            <div className="border-b border-marketing-border px-3 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-marketing-text-muted">
+              Prompt Library Matches
+            </div>
+            <ul className="divide-y divide-marketing-border">
+              {promptSuggestions.map((suggestion, index) => (
+                <li
+                  key={suggestion.id}
+                  className={cn(
+                    "[animation:promptSuggestionBounce_280ms_cubic-bezier(0.34,1.56,0.64,1)_both]",
+                  )}
+                  style={{ animationDelay: `${index * 55}ms` }}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition-colors",
+                      activePromptSuggestionIndex === index
+                        ? "bg-marketing-accent-soft"
+                        : "hover:bg-marketing-accent-medium",
+                    )}
+                    onMouseEnter={() => onPromptSuggestionHover(index)}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      onPromptSuggestionSelect(index);
+                    }}
+                  >
+                    <span className="font-mono text-sm font-semibold text-marketing-primary">
+                      \{suggestion.name}
+                    </span>
+                    <span className="line-clamp-1 text-xs text-marketing-text-secondary">
+                      {suggestion.description || "No description"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <input
           ref={fileInputRef}
           className="hidden"

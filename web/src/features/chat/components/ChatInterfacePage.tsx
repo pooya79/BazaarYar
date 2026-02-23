@@ -4,7 +4,10 @@ import { useParams, useRouter } from "next/navigation";
 import type { KeyboardEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatEmptyState } from "@/features/chat/components/ChatEmptyState";
-import { ChatInput } from "@/features/chat/components/ChatInput";
+import {
+  ChatInput,
+  type PromptSuggestion,
+} from "@/features/chat/components/ChatInput";
 import { ChatMessages } from "@/features/chat/components/ChatMessages";
 import { ToolSettingsModal } from "@/features/chat/components/ToolSettingsModal";
 import { useChatSession } from "@/features/chat/hooks/useChatSession";
@@ -18,6 +21,8 @@ import { useToolSettings } from "@/features/chat/hooks/useToolSettings";
 import { quickActions } from "@/features/chat/model/constants";
 import type { AssistantTurn } from "@/features/chat/model/types";
 import { formatTime } from "@/features/chat/utils/chatViewUtils";
+import { replaceTrailingPromptCommand } from "@/features/prompts/model/promptStore";
+import { listPrompts } from "@/shared/api/clients/prompts.client";
 import { useModelCards } from "@/shared/layout/ModelCardsContext";
 
 export function ChatInterfacePage() {
@@ -38,6 +43,16 @@ export function ChatInterfacePage() {
   const messageId = useRef(0);
   const chatWrapperRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [debouncedPromptQuery, setDebouncedPromptQuery] = useState<
+    string | null
+  >(null);
+  const [promptSuggestions, setPromptSuggestions] = useState<
+    PromptSuggestion[]
+  >([]);
+  const [isPromptSuggestionsDismissed, setIsPromptSuggestionsDismissed] =
+    useState(false);
+  const [activePromptSuggestionIndex, setActivePromptSuggestionIndex] =
+    useState(0);
 
   const createLocalId = useCallback(() => {
     const id = `local-${messageId.current}`;
@@ -129,6 +144,99 @@ export function ChatInterfacePage() {
     chatWrapperRef.current.scrollTop = chatWrapperRef.current.scrollHeight;
   }, [timeline.length, showTypingIndicator]);
 
+  const trailingPromptMatch = messageInput.match(/\\([a-zA-Z0-9_-]*)$/);
+  const promptSearchQuery = trailingPromptMatch
+    ? trailingPromptMatch[1].toLowerCase()
+    : null;
+
+  useEffect(() => {
+    if (promptSearchQuery === null) {
+      setDebouncedPromptQuery(null);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedPromptQuery(promptSearchQuery);
+    }, 140);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [promptSearchQuery]);
+
+  useEffect(() => {
+    if (debouncedPromptQuery === null || isPromptSuggestionsDismissed) {
+      setPromptSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const items = await listPrompts({
+          q: debouncedPromptQuery,
+          limit: 3,
+          offset: 0,
+          signal: controller.signal,
+        });
+        setPromptSuggestions(
+          items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            prompt: item.prompt,
+          })),
+        );
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
+        console.error("Failed to fetch prompt suggestions", error);
+        setPromptSuggestions([]);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [debouncedPromptQuery, isPromptSuggestionsDismissed]);
+
+  useEffect(() => {
+    setActivePromptSuggestionIndex((current) => {
+      if (promptSuggestions.length === 0) {
+        return 0;
+      }
+      return Math.min(current, promptSuggestions.length - 1);
+    });
+  }, [promptSuggestions]);
+
+  const resizeComposer = useCallback(() => {
+    if (!textareaRef.current) {
+      return;
+    }
+    textareaRef.current.style.height = "auto";
+    const nextHeight = Math.min(textareaRef.current.scrollHeight, 150);
+    textareaRef.current.style.height = `${nextHeight}px`;
+  }, []);
+
+  const applyPromptSuggestion = useCallback(
+    (index: number) => {
+      const selectedPrompt = promptSuggestions[index];
+      if (!selectedPrompt) {
+        return false;
+      }
+      setMessageInput((current) =>
+        replaceTrailingPromptCommand(current, selectedPrompt.prompt),
+      );
+      setIsPromptSuggestionsDismissed(true);
+      window.requestAnimationFrame(() => {
+        resizeComposer();
+        textareaRef.current?.focus();
+      });
+      return true;
+    },
+    [promptSuggestions, resizeComposer, setMessageInput],
+  );
+
   const handleSend = async (overrideText?: string) => {
     if (isStreaming) {
       return;
@@ -177,16 +285,39 @@ export function ChatInterfacePage() {
   };
 
   const handleInputChange = (value: string) => {
+    setIsPromptSuggestionsDismissed(false);
     setMessageInput(value);
-    if (!textareaRef.current) {
-      return;
-    }
-    textareaRef.current.style.height = "auto";
-    const nextHeight = Math.min(textareaRef.current.scrollHeight, 150);
-    textareaRef.current.style.height = `${nextHeight}px`;
+    resizeComposer();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (promptSuggestions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActivePromptSuggestionIndex((current) =>
+          current + 1 >= promptSuggestions.length ? 0 : current + 1,
+        );
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActivePromptSuggestionIndex((current) =>
+          current - 1 < 0 ? promptSuggestions.length - 1 : current - 1,
+        );
+        return;
+      }
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        event.preventDefault();
+        applyPromptSuggestion(activePromptSuggestionIndex);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsPromptSuggestionsDismissed(true);
+        return;
+      }
+    }
+
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (isStreaming) {
@@ -246,6 +377,10 @@ export function ChatInterfacePage() {
         onRemoveAttachment={handleRemoveAttachment}
         onOpenToolSettings={() => setToolModalOpen(true)}
         toolSettingsBusy={isToolSettingsLoading}
+        promptSuggestions={promptSuggestions}
+        activePromptSuggestionIndex={activePromptSuggestionIndex}
+        onPromptSuggestionHover={setActivePromptSuggestionIndex}
+        onPromptSuggestionSelect={applyPromptSuggestion}
       />
       <ToolSettingsModal
         open={toolModalOpen}
