@@ -32,7 +32,7 @@ The agent platform is designed to support:
 - `server/features/`: Canonical backend feature slices (`agent`, `settings`, `attachments`, `chat`, `reports`, `shared`).
 - `server/features/agent/`: Agent feature modules (API routing, streaming orchestration, runtime/service adapters, tools, model integration, python sandbox tool).
 - `server/features/reports/`: Conversation reports feature modules (report CRUD/search service + API under `/api/reports`).
-- `server/features/settings/`: Global app settings feature modules (model settings repo/service/API under `/api/settings`).
+- `server/features/settings/`: Global app settings feature modules (model cards + tool/company settings repo/service/API under `/api/settings`).
 - `server/features/attachments/`: Attachment feature modules (storage, metadata, upload/download API).
 - `server/features/chat/`: Conversation/chat feature modules (context windowing, persistence orchestration, API).
 - `server/features/shared/`: Shared backend helpers (for example UUID parsing utilities).
@@ -84,6 +84,6 @@ The agent platform is designed to support:
 - Import backend functionality from canonical modules under `server/features/*` and `server/db/models/*`.
 - To load env variables in server you should define them in `server/core/config.py`.
 - Use async routes for server
-- Agent model settings precedence: use DB global settings from `server/features/settings` when present, otherwise fallback to env defaults from `server/core/config.py`.
+- Agent model settings precedence: if `model_id` is provided on agent requests, resolve that card (and set it active); otherwise use active DB model card, then default DB model card, then env defaults from `server/core/config.py`.
 - Never commit real API keys to repo files. Settings read APIs should return masked key previews only (no full secret echo).
 - Conversation reports retrieval for agent memory is tool-driven (on demand), not auto-injected into every turn.
