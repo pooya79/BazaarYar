@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Keep frontend shared lib tracked.
+!/web/src/shared/lib/
+!/web/src/shared/lib/**
 lib64/
 parts/
 sdist/
